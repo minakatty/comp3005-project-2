@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+db/
+demo/
+*.db
+results_demo/

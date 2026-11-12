@@ -1,32 +1,27 @@
-# Oral check notes for M1 (and the refactor)
-The instructor runs your tool on his files and asks you to explain what happened, then asks one reading question.
-Be able to answer each of these from the code, out loud, without looking.
+# Oral check notes (M1 + refactor). Answer each aloud, from the code, without looking.
 
 **Pages**
-- Draw the page. Where do the slot directory and the records start, and which way does each grow?
-- How many bytes is the header and a slot? What does `offset == 0` mean? Why can't a record start at 0?
-- What happens on delete? On the next insert? When does compaction run, and why do record ids stay valid?
-- How many 12-byte records fit on a page, and why that number (formula)?
+- Draw a data page: header fields and offsets (page_id@0, slot_count@4, free_end@6), slot directory from byte 8, records from byte 4095 down.
+- Free space formula; why an insert needs L + 4; what a dead slot looks like (0,0); why slot numbers are never reused (rids stay valid).
+- After inserts of 13, 20, 13 bytes and a delete of slot 1, what are slot_count, free_end and free space? (3, 4050, 4030) Why did the delete free nothing?
+- Records per page for 13-byte records: floor(4088 / 17) = 240. Why does your measured number differ for VARCHAR tables?
 
 **Heap file**
-- How does insert avoid scanning the file? What is the weakness (map rebuilt on first insert of a session)?
-- How does `scan` keep only one page pinned? (copy records, unpin, then yield)
-- What is a rid?
+- Page 0 is a directory page: header fields, 6-byte entries, 681 per page. How does insert find a page? What does the in-memory mirror save and cost?
+- How does scan keep at most one page pinned? (copy entries / records, unpin, then yield)
+- Why does a 500-page scan read 501 pages at every B?
 
 **Buffer pool**
-- What is pinning and why can't a pinned page be evicted? What do you raise, and when?
-- LRU: what exactly is "recently used" in your implementation? (time of last unpin)
-- CLOCK: when is the reference bit set, what does the hand skip, and why can CLOCK behave like FIFO?
-- Why do both policies get zero hits on a loop over B+1 pages? Which page is evicted right before it is needed?
-- What do hits, misses, evictions, reads and writes mean, and which are the same number sometimes?
-- Why does `trace` use a dummy disk?
+- hit, miss, eviction, read, write: exact definitions. Why are the first B misses not evictions?
+- LRU: what moves a frame to most recently used? (every fetch) How is the victim chosen? Walk the 1 2 3 1 4 2 example.
+- CLOCK: when is the reference bit set, what does the hand skip, why does it end up at [4,2,3] in the example, when does it give up?
+- Why do both policies get 0 hits on a loop over more pages than the pool? Which page is evicted just before it is needed?
+- What happens if every frame is pinned? (error "no unpinned frame available") If you unpin a page at pin count 0? (error)
 
 **Catalog and counters**
-- Where is the catalog stored and why isn't its I/O counted? What is its size limit?
-- Why is `allocate_page` not counted as a write?
+- Where is the catalog, what is in a record, how is it persisted, why reset the counters after loading it?
+- Why does `trace` use a stand-in disk?
 
 **Refactor**
-- Why must `project` keep duplicates now, and which of the 25 cases changed (case 23)?
-- What is a provider, and why does the evaluator not own its data any more?
-- What does `parse_condition` give modules 2, 3 and 4?
-- Why is `distinct` a soft keyword? Show that `select[distinct=1](R)` still works.
+- Why does `project` keep duplicates now; which of the 25 cases changed (case 23) and how did you fix the test?
+- What is a provider? What does `parse_condition` give modules 2, 3 and 4? Why is `distinct` a soft keyword?

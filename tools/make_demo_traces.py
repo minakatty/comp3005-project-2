@@ -1,4 +1,4 @@
-"""Writes five SYNTHETIC trace files for testing the measurement pipeline.
+"""Writes five SYNTHETIC trace files for testing the measurement pipeline (one page id per line).
 These are NOT the instructor's traces. Replace them with the published ones for the report."""
 import os, random, sys
 
@@ -10,9 +10,9 @@ def write(name, ids):
     with open(os.path.join(out, name), "w") as f:
         f.write("\n".join(str(i) for i in ids) + "\n")
 
-write("demo_seq_loop.txt", [i for _ in range(10) for i in range(40)])            # repeated scan, 40 pages
-write("demo_hot_set.txt", [rnd.choice(range(8)) if rnd.random() < 0.8 else rnd.randrange(8, 200) for _ in range(2000)])
-write("demo_uniform.txt", [rnd.randrange(100) for _ in range(2000)])
-write("demo_scan_plus_hot.txt", [x for r in range(15) for x in (list(range(100, 130)) + [0, 1, 2, 3] * 5)])
-write("demo_working_set.txt", [rnd.randrange(12) for _ in range(1500)])
+write("trace1.txt", [rnd.choice(range(20)) if rnd.random() < 0.8 else rnd.randrange(20, 400) for _ in range(5000)])  # hot set
+write("trace2.txt", [rnd.randrange(300) for _ in range(5000)])                                                      # uniform
+write("trace3.txt", [i for _ in range(10) for i in range(80)])                  # 80-page file scanned 10 times, like the spec's trace 3
+write("trace4.txt", [x for r in range(20) for x in (list(range(100, 190)) + [0, 1, 2, 3] * 10)])                     # scan + hot pages
+write("trace5.txt", [rnd.randrange(40) for _ in range(5000)])                                                       # small working set
 print("wrote 5 demo traces to", out)

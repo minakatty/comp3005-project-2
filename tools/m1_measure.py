@@ -1,64 +1,48 @@
-"""Produces both tables required by handout section 2.4.
+"""Produces the three measurements required by M1 spec section 8. Nothing here is estimated: every
+number comes from running the storage engine.
 
   python tools/m1_measure.py --traces traces_published --out results_m1
-  python tools/m1_measure.py --traces traces_demo --out results_demo        (pipeline self-test)
+  python tools/m1_measure.py --traces traces_demo --out results_demo          (pipeline self-test only)
 
-Table 1: records per 4 KB page, by hand versus measured, for three schemas.
-Table 2: hit rate for every trace x {LRU, CLOCK} x four pool sizes.
-Nothing here is estimated: every number comes from running the storage engine.
+  1. Capacity: records per page by hand (floor(4088 / (L + 4))) versus measured, three schemas.
+  2. Policies: hit rate for every trace, LRU and CLOCK, at B = 4, 16, 64, 256.
+  3. Scan cost: page reads for a full scan of a 500 page table at B = 2, 8, 64.
 """
-import argparse, csv, glob, os, random, shutil, sys, tempfile
+import argparse, csv, glob, os, shutil, sys, tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from storage.db import Database
-from storage.page import SlottedPage, HEADER, SLOT
-from storage import schema as sch
+from storage.page import SlottedPage
 from storage.cli import run_trace
-
-PAGE = 4096
-
-
-def per_page(rec_size):
-    return (PAGE - HEADER) // (rec_size + SLOT)
+from storage import schema as sch
 
 
-def capacity_rows(n_rows=3000):
-    rnd = random.Random(1)
+def capacity(n_rows):
     cases = [
-        # name, schema, row generator, hand-calc record size (bytes), note
-        ("INT only", "a:INT,b:INT,c:INT", lambda i: (i, i * 7, -i), 12, "every record is exactly 12 bytes"),
-        ("mixed, VARCHAR(20) lengths 4-16", "a:INT,b:VARCHAR(20),c:INT",
-         lambda i: (i, "x" * rnd.randint(4, 16), i), None, "variable lengths; hand calc uses the average (10) and the declared max"),
-        ("long VARCHAR(200), length 150", "id:INT,title:VARCHAR(200)",
-         lambda i: (i, "t" * 150), 4 + 1 + 150, "one very long column"),
+        ("all INT", "a:INT,b:INT,c:INT", lambda i: (i, i * 7, -i)),
+        ("short VARCHAR(10), value length 8", "a:INT,b:VARCHAR(10),c:INT", lambda i: (i, "abcdefgh", i)),
+        ("VARCHAR(200), value length 150", "id:INT,title:VARCHAR(200)", lambda i: (i, "t" * 150)),
     ]
     out = []
-    for name, schema_str, gen, rec, note in cases:
+    for name, ddl, gen in cases:
         d = tempfile.mkdtemp()
         db = Database(d, frames=8)
-        db.catalog.create_table("T", schema_str)
+        db.catalog.create_table("T", ddl)
+        cols = sch.parse_schema(ddl)
         h = db.heap("T")
-        sizes = []
-        cols = sch.parse_schema(schema_str)
+        L = len(sch.encode(cols, gen(0)))
         for i in range(n_rows):
-            row = gen(i)
-            sizes.append(len(sch.encode(cols, row)))
-            h.insert(row)
+            h.insert(gen(i))
         meta = db.catalog.tables["T"]
-        first = db.pool.fetch_page(meta["first_page"])
-        p = SlottedPage(first.data)
-        full_slots, free = p.num_slots, p.free_space()
-        used = sum(p.slot(i)[1] for i in range(p.num_slots))
-        db.pool.unpin_page(meta["first_page"], False)
-        avg = sum(sizes) / len(sizes)
-        by_hand_avg = per_page(round(avg))
-        by_hand_max = per_page(sch.max_record_size(cols))
-        if rec is not None:
-            by_hand_avg = per_page(rec)
-        out.append(dict(schema=name, ddl=schema_str, avg_rec=round(avg, 2), max_rec=sch.max_record_size(cols),
-                        hand_avg=by_hand_avg, hand_max=by_hand_max, first_page_slots=full_slots,
-                        overall=round(meta["num_tuples"] / meta["num_pages"], 2), pages=meta["num_pages"],
-                        tuples=meta["num_tuples"], first_page_free=free, first_page_data=used, note=note))
+        first_data_page = 1
+        f = db.pool.fetch_page((meta["file_no"] << 32) | first_data_page)
+        p = SlottedPage(f.data)
+        full, free = p.slot_count, p.free_space()
+        db.pool.unpin_page(f.page_id, False)
+        out.append(dict(name=name, ddl=ddl, L=L, hand=sch.records_per_page(L),
+                        hand_declared_max=sch.records_per_page(sch.max_record_size(cols)),
+                        measured_full_page=full, tuples=meta["num_tuples"], data_pages=meta["num_pages"],
+                        overall=round(meta["num_tuples"] / meta["num_pages"], 2), leftover=free))
         db.close()
         shutil.rmtree(d, ignore_errors=True)
     return out
@@ -67,59 +51,78 @@ def capacity_rows(n_rows=3000):
 def trace_facts(path):
     ids = [int(l.split()[0]) for l in open(path) if l.strip()]
     seq = sum(1 for a, b in zip(ids, ids[1:]) if b == a + 1)
-    return len(ids), len(set(ids)), (seq / max(1, len(ids) - 1))
+    return len(ids), len(set(ids)), seq / max(1, len(ids) - 1)
 
 
-def trace_table(trace_files, sizes):
+def scan_cost(pages_wanted, sizes):
+    per_page = sch.records_per_page(4 + 2 + 150)             # id INT + VARCHAR(200) holding 150 bytes
+    d = tempfile.mkdtemp()
+    db = Database(d, frames=16)
+    db.catalog.create_table("T", "id:INT,title:VARCHAR(200)")
+    h = db.heap("T")
+    for i in range(per_page * pages_wanted):
+        h.insert((i, "t" * 150))
+    meta = db.catalog.tables["T"]
+    data_pages, file_pages = meta["num_pages"], db.fileset.num_pages(meta["file_no"])
+    db.close()
     rows = []
-    for tf in trace_files:
-        n, distinct, seqfrac = trace_facts(tf)
-        for pol in ("lru", "clock"):
-            res = {s: run_trace(tf, s, pol) for s in sizes}
-            rows.append(dict(trace=os.path.basename(tf), policy=pol, refs=n, distinct=distinct,
-                             seqfrac=round(seqfrac, 2), res=res))
-    return rows
+    for B in sizes:
+        db = Database(d, frames=B)
+        n = sum(1 for _ in db.heap("T").scan())
+        rows.append(dict(B=B, rows=n, **db.pool.stats()))
+        db.close()
+    shutil.rmtree(d, ignore_errors=True)
+    return data_pages, file_pages - data_pages, rows
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--traces", required=True, help="folder containing the trace .txt files")
-    ap.add_argument("--sizes", type=int, nargs=4, default=[4, 8, 16, 32], metavar="B",
-                    help="four pool sizes (frames); pick them relative to each trace's distinct page count")
+    ap.add_argument("--traces", required=True, help="folder with the trace .txt files")
+    ap.add_argument("--sizes", type=int, nargs="+", default=[4, 16, 64, 256], help="pool sizes for the policy table")
+    ap.add_argument("--scan-sizes", type=int, nargs="+", default=[2, 8, 64])
+    ap.add_argument("--scan-pages", type=int, default=500)
+    ap.add_argument("--rows", type=int, default=3000, help="rows to load for the capacity measurement")
     ap.add_argument("--out", default="results_m1")
-    ap.add_argument("--rows", type=int, default=3000)
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     files = sorted(glob.glob(os.path.join(a.traces, "*.txt")))
     if not files:
         sys.exit(f"no .txt trace files found in {a.traces}")
 
-    cap = capacity_rows(a.rows)
-    tr = trace_table(files, a.sizes)
+    md = ["## Measurement 1: records per page, by hand versus measured", "",
+          "Hand: floor(4088 / (L + 4)) where L is the record length in bytes and 4 is the slot entry.", "",
+          "| schema | L (bytes) | by hand | by hand if declared max were used | measured on a full page | tuples / data pages | bytes left on that page |",
+          "|---|---|---|---|---|---|---|"]
+    for c in capacity(a.rows):
+        md.append(f"| {c['name']} (`{c['ddl']}`) | {c['L']} | {c['hand']} | {c['hand_declared_max']} | "
+                  f"{c['measured_full_page']} | {c['overall']} ({c['tuples']}/{c['data_pages']}) | {c['leftover']} |")
 
-    md = ["## Table 1: records per page, by hand versus measured", "",
-          "Formula: records = floor((4096 - 8) / (record_size + 4)); 8 = page header, 4 = one slot entry.", "",
-          "| schema | avg record (B) | max record (B) | by hand (avg) | by hand (declared max) | measured (full first page) | measured overall (tuples/pages) | free bytes left on first page |",
-          "|---|---|---|---|---|---|---|---|"]
-    for c in cap:
-        md.append(f"| {c['schema']} (`{c['ddl']}`) | {c['avg_rec']} | {c['max_rec']} | {c['hand_avg']} | {c['hand_max']} | "
-                  f"{c['first_page_slots']} | {c['overall']} ({c['tuples']}/{c['pages']}) | {c['first_page_free']} |")
-    md += ["", "## Table 2: buffer pool hit rate (hits / references)", "",
-           "| trace | policy | refs | distinct pages | seq. fraction | " + " | ".join(f"B={s}" for s in a.sizes) + " |",
-           "|---|---|---|---|---|" + "---|" * len(a.sizes)]
-    for r in tr:
-        cells = [f"{r['res'][s]['hit_rate']:.3f}" for s in a.sizes]
-        md.append(f"| {r['trace']} | {r['policy'].upper()} | {r['refs']} | {r['distinct']} | {r['seqfrac']} | " + " | ".join(cells) + " |")
+    md += ["", "## Measurement 2: buffer pool hit rate (hits / references)", "",
+           "| trace | refs | distinct pages | seq. fraction | B | LRU | CLOCK |", "|---|---|---|---|---|---|---|"]
+    rows_csv = []
+    for tf in files:
+        refs, distinct, seqf = trace_facts(tf)
+        for B in a.sizes:
+            r = {p: run_trace(tf, B, p) for p in ("lru", "clock")}
+            md.append(f"| {os.path.basename(tf)} | {refs} | {distinct} | {seqf:.2f} | {B} | {r['lru']['hit_rate']:.4f} | {r['clock']['hit_rate']:.4f} |")
+            for p in ("lru", "clock"):
+                x = r[p]
+                rows_csv.append([os.path.basename(tf), p, B, x["hits"], x["misses"], x["evictions"], x["reads"], x["writes"], x["hit_rate"]])
+
+    md += ["", "## Measurement 3: scan cost", ""]
+    data_pages, dir_pages, scan_rows = scan_cost(a.scan_pages, a.scan_sizes)
+    md += [f"Table scanned: {data_pages} data pages + {dir_pages} directory page(s).", "",
+           "| B | rows returned | page reads | hits | misses | evictions |", "|---|---|---|---|---|---|"]
+    for r in scan_rows:
+        md.append(f"| {r['B']} | {r['rows']} | {r['reads']} | {r['hits']} | {r['misses']} | {r['evictions']} |")
+
     text = "\n".join(md) + "\n"
-    open(os.path.join(a.out, "REPORT_M1_tables.md"), "w", encoding="utf-8").write(text)
-
+    with open(os.path.join(a.out, "REPORT_M1_tables.md"), "w", encoding="utf-8") as f:
+        f.write(text)
     with open(os.path.join(a.out, "trace_results.csv"), "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["trace", "policy", "frames", "hits", "misses", "evictions", "writes", "hit_rate"])
-        for r in tr:
-            for s in a.sizes:
-                x = r["res"][s]
-                w.writerow([r["trace"], r["policy"], s, x["hits"], x["misses"], x["evictions"], x["writes"], x["hit_rate"]])
+        w.writerow(["trace", "policy", "frames", "hits", "misses", "evictions", "reads", "writes", "hit_rate"])
+        w.writerows(rows_csv)
     print(text)
     print(f"wrote {a.out}/REPORT_M1_tables.md and {a.out}/trace_results.csv")
 

@@ -1,80 +1,114 @@
 # DESIGN_M1: storage engine and buffer pool
 
-> DRAFT written with AI help from the code as it exists. Read every line, check it against
-> `storage/*.py`, and rewrite the "why" parts in your own words. You will be asked about all of it.
+> DRAFT written with AI help from the code. Read each statement against `storage/*.py`, run `storage layout --hex`
+> on your own files to replace the example in section 2, and rewrite section 8 (reasoning) in your own words.
+> Delete this note when done.
 
-## 1. Page layout (4096 bytes, little endian)
+## 1. Files and addressing
+One file per table (`<table>.db`) plus `catalog.db`, all sequences of 4096-byte pages with no header outside the
+pages. A page id is the zero-based index inside its file; a rid is `(page_id, slot)`. Integers are little endian.
+The buffer pool is shared by all files, so it addresses a page by one integer, `(file_no << 32) | page_id`
+(file 0 is `catalog.db`). Only `storage/disk.py` touches files.
 
+## 2. Data page (byte level)
 ```
-byte   0    2    4         8                       8+4n          free_end              4096
-       +----+----+---------+-----------------------+-------------+---------------------+
-       | ns | fe | next_pg | slot 0 | slot 1 | ... |  free space | ... rec 1 | rec 0   |
-       +----+----+---------+-----------------------+-------------+---------------------+
-        u16  u16    i32      4 bytes each            (grows ->)     (<- grows downward)
+offset size field
+   0    4   page_id      uint32
+   4    2   slot_count   uint16   includes dead slots
+   6    2   free_end     uint16   lowest byte offset used by record data
+   8    4   slot 0       uint16 offset, uint16 length      (offset 0 = dead)
+  12    4   slot 1
+  ...        <-- free space -->
+free_end    record data, newest at the lowest offset
+ 4095       end of page
 ```
-| bytes | field | meaning |
-|---|---|---|
-| 0-1 | `num_slots` (u16) | slot directory entries in use, deleted ones included |
-| 2-3 | `free_end` (u16) | offset of the lowest record byte; starts at 4096 |
-| 4-7 | `next_page` (i32) | next page of the heap file, -1 at the end |
-| 8 + 4i .. 11 + 4i | slot i | `offset` (u16), `length` (u16) |
+Free space = `free_end - (8 + 4 * slot_count)`; an insert of L bytes needs `L + 4`. Slot numbers are never reused or
+renumbered. Delete only marks the slot `(0,0)`; space is **not** reclaimed.
 
-- The slot directory grows forward from byte 8, record data grows backward from byte 4096.
-- A slot with `offset == 0` is deleted. A real record can never start at 0 because the header lives there.
-- Free space between the two = `free_end - (8 + 4 * num_slots)`.
-- Delete only marks the slot. A later insert reuses the first deleted slot number. When a record fits only
-  after reclaiming dead bytes, the page is compacted (records slide to the back; slot numbers do not change,
-  so record ids stay valid).
-- Capacity by hand: `records = floor((4096 - 8) / (record_size + 4))`.
+**Compaction decision:** not implemented. The spec makes it optional; skipping it keeps rids stable, keeps free space
+equal to the spec's formula after every operation, and makes the worked example in spec 3.2 reproduce exactly.
 
-## 2. Record format
-`INT` = 4 bytes signed. `VARCHAR(n)` = 1 length byte then the UTF-8 bytes (n <= 255). Columns in schema order,
-no padding, no NULLs. A record's size depends on its actual string lengths, not on the declared `n`.
+**A real page from my own files** (replace with the output of `storage layout --db DB --table R --page 1 --hex`;
+this example is a table `R(a INT, b VARCHAR(20), c INT)` holding (42,bob,7), (43,amy,9), (44,"x,y",1)):
+```
+0000  01 00 00 00 | 03 00 | d9 0f | f3 0f 0d 00 | e6 0f 0d 00 | d9 0f 0d 00
+      page_id=1     slots=3 free_end=0x0fd9=4057
+                                    slot0 off=0x0ff3 (4083) len=13
+                                                  slot1 off=4070 len=13
+                                                                slot2 off=4057 len=13
+0fd9  2c 00 00 00 03 00 78 2c 79 01 00 00 00      record 2: a=44, b="x,y" (len 3), c=1
+0fe6  2b 00 00 00 03 00 61 6d 79 09 00 00 00      record 1: a=43, b="amy", c=9
+0ff3  2a 00 00 00 03 00 62 6f 62 07 00 00 00      record 0: a=42, b="bob", c=7
+```
 
-## 3. Heap file and free-space strategy
-- A table is a singly linked chain of pages (`next_page`). The catalog stores `first_page`, `last_page`,
-  `num_pages`, `num_tuples`.
-- **Free-space directory:** an in-memory map `page_id -> usable bytes`. An insert tries the last page first,
-  then any page in the map with room, and only then allocates a new page. It never scans the file.
-- **Known cost (be ready to say this):** the map is rebuilt lazily, so the first insert into an existing table
-  in a new session walks the page chain once (one read per page). It is not persisted.
-- `scan()` fetches one page, copies its records out, unpins it, and only then yields them, so at most one page is
-  pinned at any time. The tests assert this.
-- `rid = (page_id, slot)`. `delete` marks the slot; `get` on a deleted rid returns `None`.
+## 3. Record format
+`INT` = 4 bytes signed two's complement. `VARCHAR(n)` = 2-byte unsigned length L (L <= n <= 255) then L bytes of
+UTF-8. Fields concatenated in schema order; no record header, no null bitmap. Record length is variable whenever a
+VARCHAR is present, and nothing assumes a fixed length. Example `(42,'bob',7)` = `2A000000 0300 626F62 07000000`
+= 13 bytes (a test checks this).
+A record that cannot fit on an empty page (more than 4084 bytes, i.e. 4088 minus its own slot) is rejected with an error
+naming the table and the row.
 
-## 4. Catalog
-Page 0 of the data file holds one JSON record per table (name, schema string, first/last page, counts), stored
-with the same slotted-page code. Limits: the whole catalog must fit in one page, and catalog reads/writes go
-straight to the disk manager so they are **not** counted in the buffer-pool counters (the measurements then
-reflect table pages only).
+## 4. Heap file: directory pages and the free-space strategy
+Page 0 of every table file is the first directory page; data pages and any further directory pages follow in
+allocation order.
+```
+offset size field
+   0    4   page_id        uint32
+   4    4   next_dir_page  uint32     0xFFFFFFFF if none
+   8    2   entry_count    uint16
+  10    6   entry 0        uint32 data_page_id, uint16 free_bytes
+  16    6   entry 1 ...                      capacity = floor((4096 - 10) / 6) = 681 entries
+```
+`free_bytes` is the page's free space as defined in section 2.
+- **insert:** first fit over the directory entries (`free_bytes >= len + 4`); otherwise allocate a new data page and add an
+  entry to the last directory page, chaining a new directory page when the last one holds 681 entries.
+  *Implementation note:* the first-fit search runs over an in-memory mirror of the directory, built by one walk of the
+  directory chain on the first insert of a session and kept in step with every change. The data page and directory page
+  are still read and written through the buffer pool. Reason: walking up to 681 entries per insert in Python made bulk
+  loads slow; the layout on disk is identical to a literal walk. Cost: the first insert of a session reads the directory
+  pages once.
+- **get:** fetch the data page, read the slot, unpin. A dead or out-of-range slot is an error naming the rid.
+- **delete:** mark the slot dead. A delete does not change free space, so the directory entry stays correct and is not
+  rewritten (the spec says to update it; the update would write the same number).
+- **scan:** for each directory page: copy its entries, unpin it; for each entry: fetch the data page, copy its live
+  records, unpin it, then yield. At most one page is ever pinned (the spec allows two). A table 20x larger than the pool
+  scans fine (tested).
 
-## 5. Buffer pool
-- `B` frames, a table `page_id -> frame`, per-frame `pin`, `dirty`, `ref`.
-- `fetch_page` hit: pin++ and count a hit. Miss: choose a victim (a free frame first), write it back if dirty,
-  read the page, count a miss; counting an eviction only when a resident page was replaced.
-- `new_page` allocates a page and pins it dirty, without a read.
-- **Pinned pages are never victims.** `evict_page(pid)` on a pinned page raises `PinnedPageError`; a fetch when
-  every frame is pinned raises `BufferPoolFull`. There is a test for both.
-- **LRU:** recency is the time of the last unpin; unpinned pages sit in an ordered dict, oldest first; the
-  victim is the first entry.
-- **CLOCK:** the reference bit is set when a page is loaded and on every hit. The hand sweeps the frames,
-  skipping pinned ones, clearing set bits, and evicts the first unpinned frame whose bit is clear.
-- `stats()` returns hits, misses, evictions, and the disk reads and writes since the pool was created.
-- `storage trace` replays a trace on an in-memory dummy disk (all-zero pages) so only the policy is measured; a line
-  `<id> w` marks the page dirty on unpin, which produces writes.
+## 5. Catalog
+`catalog.db` is a sequence of slotted pages (same layout as section 2). Each live record is one UTF-8 JSON object:
+`{"name","schema","file","file_no","num_pages","file_pages","num_tuples","stats":{}}`. `num_pages` counts data pages,
+`file_pages` all pages in the table file, `stats` is empty and is where Module 4 will store ANALYZE results. The catalog is
+read at start-up and written at close through the buffer pool. `persist()` rewrites every catalog page, so dead slots
+never accumulate, and spills to further pages when full (tested with 60 tables). The pool counters are reset right after
+the catalog is loaded, so reported counters describe table access only.
 
-## 6. Disk manager
-One file of 4096-byte pages. Counts every `read_page` and `write_page`. `allocate_page` zero-extends the file
-without counting a write (the page is counted when the pool flushes it).
+## 6. Buffer pool
+B frames, each with page bytes, pin count, dirty flag (and a reference bit for CLOCK), plus a page table.
+- **fetch_page:** resident -> pin++ and a *hit*. Otherwise choose a victim among unpinned frames (none -> error
+  "no unpinned frame available"), write it back if dirty (a *write*), read the page (a *read*), and count a *miss*; it is
+  also an *eviction* only if a resident page was replaced, so the first B misses are not evictions.
+- **unpin_page:** error if the page is not resident or its pin count is already 0.
+- **new_page:** zero-filled, pinned, dirty. **flush_all:** writes every dirty frame and clears the flags.
+- **LRU:** every fetch (hit or miss) moves the frame to most recently used; the victim is the least recently used frame whose
+  pin count is 0.
+- **CLOCK:** every fetch sets the reference bit; the hand skips pinned frames, clears set bits, evicts the first unpinned
+  frame with the bit clear, advances past the victim, and gives up after sweeping more than 2B frames. A page loaded into an
+  empty frame also moves the hand past it.
+- Both policies reproduce the spec 5.3 example exactly (LRU 1/5/2, CLOCK 2/4/1, final pool [4,2,3]); tests check it.
 
-## 7. Choices and alternatives (write your own reasoning here)
-- Why slotted pages instead of fixed-size slots: variable-length VARCHARs; record ids survive compaction.
-- Why `offset == 0` as the deleted marker instead of a flag byte: smaller slots (4 bytes) and no extra state.
-- Why a chain instead of a directory page: simplest thing that supports scans; cost is walking the chain to
-  rebuild the free-space map.
-- What you would change with more time: persist the free-space map, spill the catalog across pages, a
-  scan-resistant policy (LRU-K, 2Q, or CLOCK-Pro).
+## 7. Command line
+`create-table`, `load`, `scan`, `layout [--hex]`, `trace`, each with `--json` and `--db DIR`. `scan --json` returns
+`table, schema, rows, stats`; `trace --json` returns `policy, frames, hits, misses, evictions, reads, writes` (plus
+`hit_rate`). `trace` runs on a counting stand-in disk, because all pages are clean, so only the policy matters. Errors print
+`error: ...` on stderr with exit code 1 and never a stack trace.
 
-## 8. Sources (at least two; say what each changed)
-Fill in after reading, for example Ramakrishnan and Gehrke ch. 9, O'Neil et al. (LRU-K), Petrov (Database
-Internals). For each one write: what you read, and **one concrete thing in this design that it changed**.
+## 8. Choices and reasoning (write this yourself)
+- Why slotted pages with a backward-growing record area, and why slot numbers are never reused.
+- Why a directory of pages rather than a linked list of data pages.
+- What the in-memory directory mirror costs and why it is safe.
+- Where each policy fails (see REPORT_M1.md) and what you would change (LRU-K / 2Q, MRU for scans, a persisted mirror).
+
+## 9. Sources (at least two; for each, one concrete thing it changed)
+1. ___ : changed ___
+2. ___ : changed ___

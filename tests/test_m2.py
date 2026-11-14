@@ -147,21 +147,16 @@ class SortTests(Base):
         self.assertLessEqual(res.peak_frames, 4)
         info = res.root.info
         self.assertEqual(info["input_pages"], 80)
-        # W = B - 1 = 3 frames: ceil(80/3) = 27 runs, merged 2 at a time (one frame for output)
-        self.assertEqual(info["runs_after_each_pass"][0], 27)
+        # W = B = 4 run frames (the scan's page is the 4th): ceil(80/4) = 20 runs
+        self.assertEqual(info["runs_after_each_pass"][0], 20)
 
-    def test_pass_count_matches_own_formula(self):
+    def test_pass_count_is_the_spec_formula(self):
         import math
-        for B in (4, 5, 8, 17):
+        for B in (3, 4, 5, 8, 17):
             res = self.run_plan({"op": "sort", "keys": [["T.k", "asc"]], "child": scan("T")}, B)
-            W = B - 1
-            runs = math.ceil(80 / W)
-            F = max(2, W - 1)
-            passes, r = 1, runs
-            while r > max(2, W):
-                r = math.ceil(r / F)
-                passes += 1
-            self.assertEqual(res.root.info["passes"], passes + 1)
+            spec = 1 + math.ceil(math.log(math.ceil(80 / B)) / math.log(B - 1))
+            self.assertEqual(res.root.info["passes"], spec, f"B={B}")
+            self.assertEqual(res.root.info["runs_after_each_pass"][0], math.ceil(80 / B))
 
     def test_desc_and_strings(self):
         self.table("U", "n:VARCHAR(10)", [("b",), ("a",), ("é",), ("B",)])
@@ -170,16 +165,19 @@ class SortTests(Base):
 
 
 class SortExampleN8B3(Base):
-    def test_documented_variant_of_section_2_5(self):
-        # 8 pages of input at B = 3. With W = B - 1 = 2 frames for runs: 4 runs on
-        # pass 0, merged 2-way twice. See DESIGN_M2.md 3 for why W is B - 1.
+    def test_section_2_5_worked_example(self):
+        # N = 8 pages, B = 3: 3 runs (3, 3, 2 pages); pass 1 merges two and carries the
+        # third; pass 2 streams the last two runs to the parent.
         self.table("T", "k:INT,s:VARCHAR(5),i:INT", [(240 * 8 - i, "x", i) for i in range(240 * 8)])
         res = self.run_plan({"op": "sort", "keys": ["T.k"], "child": scan("T")}, 3)
-        self.assertEqual(res.root.info["runs_after_each_pass"], [4, 2])
+        self.assertEqual(res.root.info["runs_after_each_pass"], [3, 2])
         self.assertEqual(res.root.info["passes"], 3)
-        sort = res.root
-        # pass 0 writes 8; pass 1 reads 8 writes 8; pass 2 reads 8 streaming
-        self.assertEqual((sort.page_reads, sort.page_writes), (16, 16))
+        sort, scan_op = res.root, res.root.children[0]
+        # spec: reads 8 + 6 + 8 = 22, writes 8 + 6 = 14. Pass 0's 8 reads are the
+        # scan's (plus its directory page); passes 1 and 2 are the sort's.
+        self.assertEqual((sort.page_reads, sort.page_writes), (14, 14))
+        self.assertEqual(scan_op.page_reads, 8 + 1)
+        self.assertEqual(res.totals["page_reads"] - 1, 22)
 
 
 class Aggregation(Base):

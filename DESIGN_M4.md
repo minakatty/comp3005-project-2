@@ -132,8 +132,7 @@ scan's base pages, not its output pages).
 
 **Where the model and Module 2 knowingly disagree** (REPORT_M4.md compares
 predicted and actual): Module 2 builds a hash join in memory when the build side
-fits (cost M + N, not 3(M + N)); its sort uses B − 1 run frames, not B; every scan
-also reads its directory page. I kept the model on the spec's formulas because the
+fits (cost M + N, not 3(M + N)), and every scan also reads its directory page. I kept the model on the spec's formulas because the
 spec's worked examples are stated in them and the DP table must reproduce; the
 disagreement is measured rather than hidden.
 

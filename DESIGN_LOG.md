@@ -57,8 +57,9 @@ the "AI was wrong" items name the test or measurement that exposed each mistake.
 - **AI was wrong (3): hash join got *more* expensive as B grew.** The cost-vs-formula
   table showed hash join at 563 page I/O for two 32-page inputs at B = 256, against a
   formula of 192. With P = B − 2 = 254 partitions each of the 64 input pages landed in
-  a different, almost empty partition page. Fixed two ways: build in memory when the
-  build side fits, and otherwise choose P from the build table's catalog page count.
+  a different, almost empty partition page. Fixed by building in memory when the build
+  side fits (hybrid hashing); when it does not fit there are more pages than partitions,
+  so the near-empty partitions mostly disappear.
 - **AI was wrong (4): sort-merge join crashed at B = 16 and then got slower with more
   memory.** It kept the sorted left input in memory, which at B = 16 left the right
   sort one frame, fewer than a merge needs: `no unpinned frame available`, caught by
@@ -104,7 +105,7 @@ the "AI was wrong" items name the test or measurement that exposed each mistake.
 - **Trying to:** run the whole walkthrough in PowerShell on my own machine.
 - **Broke:** I was still in the old project folder (130 tests, old `storage/schema.py`),
   so `sql.py`, `opt.py`, `exec.py` did not exist. Renamed it `project2_old`, unzipped the
-  new code, copied `.git` across: 207 tests, OK, in 145 s.
+  new code, copied `.git` across: 207 tests, OK, in 145 s (211 now, with the tests added below).
 - **AI was wrong (6): plans saved with PowerShell's `>` could not be read.** The
   walkthrough said `python sql.py compile ... --json > q.json`, but Windows PowerShell's
   `>` writes UTF-16, and the tools opened files as UTF-8. Found when preparing the
@@ -113,11 +114,30 @@ the "AI was wrong" items name the test or measurement that exposed each mistake.
   and a BOM-prefixed SQL file.
 - **Broke:** `git push` failed: the remote was the walkthrough's placeholder URL. Fixed with
   `git remote set-url origin` and pushed, with the `m1` tag.
-- **Decision (from the professor):** the course traces, plan schema, sample plans and
-  dataset will not be published; write our own and state the assumption in one line.
+- **Decision (from the professor, reply to my question, 2026-11-13):** the course traces,
+  plan schema, sample plans and dataset will not be published; write our own and state the assumption in one line.
   Wrote `tools/make_traces.py` (five traces, trace1 is the §5.3 trace, trace3 the 80-page
   repeated scan, trace5 a hot set broken by scans), `samples/plans/` (one plan per
   operator in the spec's §2 JSON, plus three invalid ones), `samples/make_sample_db.py`
   and `samples/sql/`, and a test that runs every sample plan at B = 4 and B = 32
   (`tests/test_samples.py`). Re-ran the M1 measurements on my traces. One-line
   assumptions are in each DESIGN_M*.md.
+
+## 2026-11-13 (evening): Counters aligned with the spec's formulas
+
+- **Trying to:** get a second review of the whole repository before submitting.
+- **AI was wrong (7): my sort and hash join counters did not match the spec.** The
+  review pointed out that the sort used B − 1 frames for runs (the scan's page counted
+  separately), so the spec's own example (N = 8, B = 3) gave 16 reads / 16 writes for
+  the sort instead of the spec's 22 / 14, and the hash join used B − 2 partitions instead
+  of B − 1. The professor grades counters against what the named algorithm should cost,
+  so this mattered. Fixed: the scan's pinned page is the sort's B-th run frame, and
+  joins of two tables use the frame of the scan that is idle. Now the §2.5 example gives
+  exactly 22 reads (+1 directory page) and 14 writes, and the measured pass count equals
+  the spec's formula in every case. Reran REPORT_M2 and REPORT_M4.
+- **Broke:** the change made sort-merge keep the right input in memory while the left
+  input's final merge also needed a frame per run, which overflowed B = 8
+  (`test_hash_join_overflow_is_handled` runs sort-merge as its reference). Now the right
+  run is written out whenever the left merge needs those frames.
+- **Added:** a test that a query of the actual workload changes join algorithm with B
+  (q15: hash join at B = 4, nested loop at B = 32), as the M4 checklist asks.

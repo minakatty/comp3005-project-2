@@ -60,11 +60,14 @@ class PagePacker:
 
 
 class WorkArea:
-    """k reserved frames' worth of tuples."""
+    """k reserved frames' worth of tuples, plus `extra` pages that are frames the
+    operator does not reserve because someone else already holds them (the sort's
+    input page, see ExternalSorter)."""
 
-    def __init__(self, ctx, cols, frames, what):
-        self.ctx, self.cols, self.k, self.what = ctx, cols, frames, what
+    def __init__(self, ctx, cols, frames, what, extra=0):
+        self.ctx, self.cols, self.what = ctx, cols, what
         self.frames = ctx.reserve(frames, what) if frames > 0 else []
+        self.k = frames + extra
         self.rows = []
         self.packer = PagePacker()
 
@@ -95,7 +98,15 @@ class WorkArea:
         if self.frames and len(self.frames) > keep:
             self.ctx.release(self.frames[keep:])
             self.frames = self.frames[:keep]
-            self.k = keep
+        self.k = len(self.frames)
+
+    def own_all_pages(self):
+        """Reserve frames for every page the tuples occupy (used once the input
+        page that was lent to this area has been released)."""
+        need = self.packer.pages - len(self.frames)
+        if need > 0:
+            self.frames += self.ctx.reserve(need, self.what)
+        self.k = max(self.k, len(self.frames))
 
     def release(self):
         if self.frames is not None:
@@ -261,25 +272,35 @@ def make_comparator(cols, keys, counter):
 
 
 class ExternalSorter:
-    """External merge sort with W working frames (M2 spec 2.5).
+    """External merge sort (M2 spec 2.5).
+
+    `frames` is the operator's share of B. When the sort reads a base table
+    directly (input_frame=True), the page the scan currently has pinned counts as
+    one of the run's frames: input pages and run pages hold the same records in the
+    same encoding, so a run of W = frames + 1 pages is the W - 1 reserved frames plus
+    the input page being read. For a sort alone over a seqscan that makes W = B,
+    exactly the spec.
 
     pass 0      fill W frames with tuples, sort them in memory (the language sort is
                 allowed on a single run), write the run to a temp file.
-    pass k      merge F = W - 1 runs at a time into a new run, one frame for output.
-                A group left with a single run is carried forward untouched.
-    final pass  when at most W runs remain (no output frame is needed), they are
-                merged straight to the caller without being written.
+    merges      the input is finished, so its frame is free: W frames for merging,
+                F = W - 1 runs at a time and one frame for output, until at most F
+                runs remain. A group left with a single run is carried forward
+                untouched (not rewritten).
+    final pass  the last <= F runs are merged straight to the caller, not written.
 
-    If the whole input fits in W frames, nothing is written and the sorted run is
-    returned from memory (one pass, zero I/O).
+    Passes = 1 + ceil(log_F(ceil(N / W))), the spec's formula when W = B.
+    If the whole input fits in W frames, nothing is written: one pass, zero I/O.
 
     `owner` is the operator whose counters receive comparisons; reads and writes are
     attributed to whatever operator is running, which is also the owner."""
 
-    def __init__(self, ctx, cols, keys, frames, owner):
-        self.ctx, self.cols, self.keys, self.W, self.owner = ctx, cols, keys, max(1, frames), owner
+    def __init__(self, ctx, cols, keys, frames, owner, input_frame=False):
+        frames = max(1, frames)
+        self.ctx, self.cols, self.keys, self.owner = ctx, cols, keys, owner
+        self.W = frames + (1 if input_frame else 0)
         self.cmp = make_comparator(cols, keys, owner)
-        self.area = WorkArea(ctx, cols, self.W, "sort run buffer")
+        self.area = WorkArea(ctx, cols, frames, "sort run buffer", extra=self.W - frames)
         self.runs = []                  # TempFiles
         self.passes = 0
         self.input_pages = 0
@@ -308,6 +329,9 @@ class ExternalSorter:
         """End of input. Runs pass 0's last run and every merge pass except the last."""
         self.passes = 1
         if not self.runs:
+            # everything fits: keep it, but now own every page it occupies (the input
+            # page it borrowed has been released by the caller closing its child)
+            self.area.own_all_pages()
             self.mem_run = sorted(self.area.rows, key=functools.cmp_to_key(self.cmp))
             self.input_pages = self.area.pages
             return
@@ -315,12 +339,15 @@ class ExternalSorter:
             self._spill()
         self.area.release()                 # pass 0 memory is no longer needed
         self.run_log.append(len(self.runs))
-        F = max(2, self.W - 1)
-        while len(self.runs) > max(2, self.W):
+        F = self.fan_in()
+        while len(self.runs) > F:
             self.runs = self._merge_pass(self.runs, F)
             self.passes += 1
             self.run_log.append(len(self.runs))
         self.passes += 1                    # the final, streaming pass
+
+    def fan_in(self):
+        return max(2, self.W - 1)
 
     def _merge_pass(self, runs, F):
         out = []
@@ -389,7 +416,7 @@ class ExternalSorter:
             self.mem_run = None
             self.runs = [tf]
             return tf
-        F = max(2, self.W - 1)
+        F = self.fan_in()
         while len(self.runs) > 1:
             self.runs = self._merge_pass(self.runs, F)
             self.run_log.append(len(self.runs))

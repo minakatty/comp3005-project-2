@@ -38,7 +38,7 @@ cd C:\dev\project2
 python -m unittest discover -s tests
 ```
 
-You should see `Ran 210 tests ... OK`. It takes about 2 minutes; the M4 tests are the slow ones.
+You should see `Ran 211 tests ... OK`. It takes about 2-3 minutes; the M4 tests are the slow ones.
 
 ## Quick demo (start here)
 
@@ -120,7 +120,7 @@ change).
 ```
 python tools/make_traces.py traces
 python tools/m1_measure.py --traces traces --out results_m1
-python tools/m2_measure.py --out results_m2                                  # ~10 min
+python tools/m2_measure.py --out results_m2                                  # ~3 min
 python tools/make_m4_dataset.py --db db_m4 --workload workload_m4
 python tools/m4_measure.py --db db_m4 --workload workload_m4 --frames 4 --analyze --out results_m4   # ~30 min
 ```
@@ -133,8 +133,8 @@ estimated vs actual rows at the root:
 python tools/run_workload.py --db db --queries hidden_queries --frames 32 --out results_final.md
 ```
 
-About the data: the prof said the course traces, sample plans and dataset won't be
-posted and to write our own, so `traces/`, `samples/` and `workload_m4/` are mine. Every
+About the data: when I asked, the prof replied (Nov 13) that the course traces, sample
+plans and dataset won't be posted and to write our own, so `traces/`, `samples/` and `workload_m4/` are mine. Every
 assumption that comes from that is one line in the "Assumptions" section of the matching
 DESIGN file.
 
@@ -170,8 +170,9 @@ One Bonus 1 test changed meaning: case 23 (`project[DID](Employees)`) now needs 
 
 ## Known limitations
 
-- The sort uses B−1 frames for runs instead of B (one frame holds the page being read in),
-  so at very small B it can take a pass or two more than the spec's formula. Explained in DESIGN_M2.
+- Hash join skips partitioning when the build side fits in memory, so at large B it costs
+  less than the spec's 3(M+N). At B = 4, big inputs overflow their partitions and cost a lot
+  more. Both are explained in REPORT_M2.
 - The optimizer only builds left-deep trees and gets slow past about 10 tables in one join.
 - Estimates assume columns are independent, so correlated columns fool it. That's on
   purpose for REPORT_M4 Section 4.

@@ -91,11 +91,9 @@ def m_cost(path, sizes, Bs, md, rows_csv):
 
 def m_sort(path, md):
     md += ["## 2. External sort passes", "",
-           "W = B - 1 working frames (one frame is the input page, DESIGN_M2.md 3). "
-           "Own formula: runs0 = ceil(N/W); passes = 1 + (merge passes with fan-in W-1 until <= W runs) + 1.", "",
-           "| N pages | B | runs after pass 0 | measured passes | spec formula 1+ceil(log(ceil(N/B))/log(B-1)) | "
-           "own formula | reads | writes | peak frames |",
-           "|---|---|---|---|---|---|---|---|---|"]
+           "| N pages | B | runs after pass 0 | measured passes | formula 1+ceil(log(ceil(N/B))/log(B-1)) | "
+           "reads | writes | peak frames |",
+           "|---|---|---|---|---|---|---|---|"]
     combos = [(8, 3), (80, 4), (160, 8), (64, 16), (100, 5), (320, 16), (40, 4)]
     for N, B in combos:
         sub = os.path.join(path, f"sort{N}")
@@ -111,18 +109,9 @@ def m_sort(path, md):
         res = run(sub, {"op": "sort", "keys": [["T.k", "asc"]], "child": {"op": "seqscan", "table": "T"}}, B)
         info = res.root.info
         spec = 1 if N <= B else 1 + math.ceil(math.log(math.ceil(N / B)) / math.log(B - 1))
-        W = B - 1
-        r = math.ceil(N / W)
-        own = 1
-        if r > 1:
-            F = max(2, W - 1)
-            while r > max(2, W):
-                r = math.ceil(r / F)
-                own += 1
-            own += 1
-        md.append(f"| {N} | {B} | {info['runs_after_each_pass'][0] if info['runs_after_each_pass'] else 1} | "
-                  f"{info['passes']} | {spec} | {own} | {res.totals['page_reads']} | {res.totals['page_writes']} | "
-                  f"{res.peak_frames} |")
+        runs0 = info["runs_after_each_pass"][0] if info["runs_after_each_pass"] else 1
+        md.append(f"| {N} | {B} | {runs0} | {info['passes']} | {spec} | {res.totals['page_reads']} | "
+                  f"{res.totals['page_writes']} | {res.peak_frames} |")
     md.append("")
 
 

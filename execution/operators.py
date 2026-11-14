@@ -282,7 +282,8 @@ class Sort(Operator):
     def _open(self):
         child = self.children[0]
         child.open()
-        self.sorter = ExternalSorter(self.ctx, self.cols, self.keys, self.share, self)
+        self.sorter = ExternalSorter(self.ctx, self.cols, self.keys, self.share, self,
+                                     input_frame=isinstance(child, SeqScan))
         for row in child:
             self.sorter.add(row)
         child.close()                       # its frames are free for the merge
@@ -399,7 +400,8 @@ class Distinct(Operator):
         child.open()
         all_cols = list(range(len(self.cols)))
         if self.mode == "sort":
-            self.sorter = ExternalSorter(self.ctx, self.cols, [(i, "asc") for i in all_cols], self.share, self)
+            self.sorter = ExternalSorter(self.ctx, self.cols, [(i, "asc") for i in all_cols], self.share, self,
+                                         input_frame=isinstance(child, SeqScan))
             for row in child:
                 self.sorter.add(row)
             child.close()
@@ -545,7 +547,7 @@ class GroupBy(Operator):
         child.open()
         if self.mode == "sort":
             self.sorter = ExternalSorter(self.ctx, child.cols, [(i, "asc") for i in self.key_idx],
-                                         self.share, self)
+                                         self.share, self, input_frame=isinstance(child, SeqScan))
             for row in child:
                 self.sorter.add(row)
             child.close()
@@ -722,8 +724,13 @@ class SortMergeJoin(_EquiJoin):
 
     def _open(self):
         left, right = self.children
+        # As in hash join: the right scan's frame is idle while the left input is
+        # sorted, and the left scan's while the right one is, so one more frame is free.
+        spare = 1 if (input_pages_hint(self.ctx, left) is not None
+                      and input_pages_hint(self.ctx, right) is not None) else 0
         left.open()
-        self.ls = ExternalSorter(self.ctx, left.cols, [(i, "asc") for i in self.lk], self.share, self)
+        self.ls = ExternalSorter(self.ctx, left.cols, [(i, "asc") for i in self.lk], self.share + spare, self,
+                                 input_frame=isinstance(left, SeqScan))
         for row in left:
             self.ls.add(row)
         left.close()
@@ -733,7 +740,7 @@ class SortMergeJoin(_EquiJoin):
             self.ls.area.shrink()
             used = self.ls.area.k
             right_pages = input_pages_hint(self.ctx, right)
-            if self.share - used < 3 or right_pages is None or right_pages > self.share - used:
+            if self.share + spare - used < 3 or right_pages is None or right_pages > self.share + spare - used:
                 # keeping the left run in memory would leave the right sort too few
                 # frames (fewer than a merge needs, or fewer than the right input's
                 # pages): write the left run out as one run file instead
@@ -741,12 +748,16 @@ class SortMergeJoin(_EquiJoin):
                 used = 0
         right.open()
         self.rs = ExternalSorter(self.ctx, right.cols, [(i, "asc") for i in self.rk],
-                                 max(1, self.share - used), self)
+                                 max(1, self.share + spare - used), self, input_frame=isinstance(right, SeqScan))
         for row in right:
             self.rs.add(row)
         right.close()
         self.rs.finish()
         self.tr = None
+        if self.rs.mem_run is not None and len(self.ls.runs) > self.ctx.db.pool.available():
+            # the left input's final merge needs one frame per run, and keeping the
+            # right run in memory would leave too few: write the right run out instead
+            self.rs.materialize()
         if self.rs.mem_run is not None:
             cursor = ListCursor(self.rs.mem_run)
         else:
@@ -835,17 +846,13 @@ class HashJoin(_EquiJoin):
     overflows; that pair falls back to block nested loop (DESIGN_M2.md 5)."""
     name = "hash_join"
 
-    def _choose_partitions(self):
-        """P = B - 2 (all working frames) is right for a big build input, but for a
-        small one it writes many nearly empty partition pages. When the build side
-        is a scan (possibly filtered/projected) its page count is known from the
-        catalog, and P is cut to what is needed for each partition to fit:
-        P = min(frames, ceil(M / frames) + 1)."""
-        P = max(1, self.share)
-        M = input_pages_hint(self.ctx, self.children[0])
-        if M is not None:
-            P = min(P, max(1, -(-M // max(1, self.share)) + 1))
-        return P
+    def _spare_frame(self):
+        """1 if both inputs are base-table pipelines. The allocator charged each of
+        their scans one frame for the whole plan, but the right scan is not open while
+        the left input is partitioned, and both are closed during the probe, so one
+        more frame is genuinely free in those phases."""
+        l, r = self.children
+        return 1 if input_pages_hint(self.ctx, l) is not None and input_pages_hint(self.ctx, r) is not None else 0
 
     def _open(self):
         left, right = self.children
@@ -867,7 +874,7 @@ class HashJoin(_EquiJoin):
             return
         buffered = area.rows
         area.release()                     # its tuples are flushed into the partition buffers
-        P = self._choose_partitions()
+        P = max(1, self.share + self._spare_frame())        # B - 1 for a join of two scans
         frames = self.ctx.reserve(P, "hash join partition buffers")
         try:
             self.lp = self._partition(left, self.lk, frames, buffered + [extra])
@@ -916,7 +923,8 @@ class HashJoin(_EquiJoin):
 
     def _probe(self):
         left, right = self.children
-        area = WorkArea(self.ctx, left.cols, self.share, "hash join build table")
+        # both inputs are closed now: B - 1 frames for the table, 1 to read partitions
+        area = WorkArea(self.ctx, left.cols, max(1, self.share + self._spare_frame()), "hash join build table")
         try:
             for i, (lt, rt) in enumerate(zip(self.lp, self.rp)):
                 if lt.count == 0 or rt.count == 0:
@@ -931,7 +939,16 @@ class HashJoin(_EquiJoin):
                 lr.close()
                 if overflow:
                     self.info["overflowed_partitions"].append(i)
-                    yield from self._bnl_partition(lt, rt, area)
+                    # the fallback reads L_i and R_i at the same time, so it needs one
+                    # more reader frame: give one table frame back while it runs
+                    if len(area.frames) > 1:
+                        self.ctx.release([area.frames.pop()])
+                        area.k -= 1
+                        yield from self._bnl_partition(lt, rt, area)
+                        area.frames += self.ctx.reserve(1, "hash join build table")
+                        area.k += 1
+                    else:
+                        yield from self._bnl_partition(lt, rt, area)
                     continue
                 buckets, nb = self._buckets(area.rows)
                 rd = rt.reader()
@@ -1006,7 +1023,7 @@ class _SortedSetOp(Operator):
     def _sorted(self, child):
         child.open()
         s = ExternalSorter(self.ctx, child.cols, [(i, "asc") for i in range(len(child.cols))],
-                           self.share, self)
+                           self.share, self, input_frame=isinstance(child, SeqScan))
         for row in child:
             s.add(row)
         child.close()

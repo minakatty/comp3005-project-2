@@ -243,3 +243,36 @@ class Live(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WorkloadChecklist(unittest.TestCase):
+    """M4 checklist item on the actual 20-query workload: changing B changes which
+    join algorithm is chosen for at least one query (q15: hash join at B = 4,
+    nested loop at B = 32)."""
+
+    def test_changing_B_changes_an_algorithm_in_the_workload(self):
+        import glob
+        import os
+        import subprocess
+        import sys
+        from storage.errors import read_text
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        d = tempfile.mkdtemp()
+        try:
+            subprocess.run([sys.executable, os.path.join(root, "tools", "make_m4_dataset.py"),
+                            "--db", os.path.join(d, "db"), "--workload", os.path.join(d, "w")],
+                           check=True, capture_output=True)
+            db = Database(os.path.join(d, "db"), 16)
+            for t in db.catalog.list_tables():
+                analyze(db, t)
+            changed = []
+            for f in sorted(glob.glob(os.path.join(root, "workload_m4", "*.sql"))):
+                lp = compile_sql(read_text(f), catalog_from_db(db))[0]
+                a = [n.op for n in optimize(lp, Stats(db), 4)[1].walk() if n.op.endswith("join")]
+                b = [n.op for n in optimize(lp, Stats(db), 32)[1].walk() if n.op.endswith("join")]
+                if a != b:
+                    changed.append(os.path.basename(f))
+            db.close()
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+        self.assertIn("q15.sql", changed)

@@ -1,6 +1,6 @@
 # REPORT_M1: Storage engine measurements
 
-Machines: the tables were produced on Linux (Intel Xeon 2.10 GHz, 2 cores, 7 GB RAM, Python 3.13.18) and reproduced on my Windows PC (8 logical processors, Python 3.13.14). Page counts, hit counts and comparisons are deterministic and identical on both; only wall-clock seconds differ.
+Machines: the tables were produced on Linux (Intel Xeon 2.10 GHz, 2 cores, 7 GB RAM, Python 3.13.18). On my Windows PC (8 logical processors, Python 3.13.14) I ran the test suite and `tools/m1_measure.py`, and the capacity and scan-cost tables came out identical. Page and hit counts are deterministic; only wall-clock seconds depend on the machine.
 
 Every number below comes from `python tools/m1_measure.py --traces traces --out results_m1`,
 which writes `results_m1/REPORT_M1_tables.md`.

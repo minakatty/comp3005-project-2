@@ -64,43 +64,46 @@ in hand, no frame) and the other memory operators take one frame each.
 For a single join over two scans this gives share = B − 2, which is exactly the
 spec's block nested loop outer block. For a sort over a scan it gives B − 1.
 
+**Frames that are idle.** The rule charges every scan one frame for the whole plan, but
+some scans are not running at every moment, and two operators use that:
+- A **sort reading a table directly** counts the page its scan has pinned as the last
+  frame of each run. Input pages and run pages hold the same records in the same
+  encoding, so a run of W = share + 1 = B pages is exactly B − 1 reserved frames plus the
+  input page. Once the input is finished, that frame is free for merging.
+- A **hash join or sort-merge join of two base tables**: the right scan is not open while
+  the left input is partitioned or sorted, and both are closed during the probe or merge.
+  So these phases get share + 1 = B − 1 frames, the spec's numbers.
+
+`BufferPool.peak_held` proves none of this ever goes over B: every test asserts it.
+
 ## 3. External sort (`memory.ExternalSorter`)
 
-With W = the operator's share:
+With W = B for a sort over a scan (W = its share otherwise):
 
 ```
 pass 0      fill W frames of tuples, sort them (Python's sort on one run), write the run
-merge       while more than W runs remain: merge W-1 runs at a time into one new run,
-            with 1 reserved frame as the output buffer
-final pass  merge the last <= W runs straight to the parent, writing nothing
+merges      F = W - 1 runs at a time into one new run, 1 frame for output, until <= F runs remain
+final pass  merge the last <= F runs straight to the parent, writing nothing
 ```
 
+- Passes = 1 + ceil(log_{B-1}(ceil(N / B))), the spec's formula, measured equal in every
+  case of REPORT_M2.md §2.
 - If the whole input fits in W frames nothing is written: one pass, zero I/O.
 - Pass 0's frames are released before merging; each merge input pins one page.
-- **Carry forward.** In a merge pass, a group left with a single run is carried to
-  the next pass untouched, not rewritten (the spec's first strategy).
-- **Why W = B − 1 and not B.** During pass 0 the sort's child (a scan) holds the
-  page it is reading, so only B − 1 frames are left for the run. This is the one
-  place my numbers knowingly differ from the spec's formula, which assumes B frames
-  for runs: runs after pass 0 are `ceil(N / (B-1))`, and merges are (B−2)-way.
+- **Carry forward.** In a merge pass, a group left with a single run is carried to the
+  next pass untouched, not rewritten (the spec's first strategy).
+- The spec's worked example reproduces exactly (`tests/test_m2.py::SortExampleN8B3`):
+  N = 8, B = 3 gives 3 runs (3, 3, 2 pages); pass 1 merges two and carries the third;
+  pass 2 streams. Reads 8 + 6 + 8 = 22 (pass 0's 8 are the scan's, plus its directory
+  page), writes 8 + 6 = 14, 3 passes.
 
-  Spec example N = 8, B = 3 under my variant: W = 2, so pass 0 makes 4 runs of 2
-  pages; one merge pass (2-way) leaves 2 runs; the final pass streams them.
-  3 passes like the spec, but 16 reads and 16 writes attributed to the sort (plus 8
-  reads by the scan) instead of the spec's 22/14, because of the extra run.
-  `tests/test_m2.py::SortExampleN8B3` checks exactly these numbers.
-
-  Passes, my formula: `1 + (merge passes until <= W runs, fan-in W - 1) + 1`; the
-  spec's `1 + ceil(log(ceil(N/B)) / log(B-1))` agrees whenever the extra run does
-  not cross a power of the fan-in. REPORT_M2.md section 2 compares both.
-
-Page accounting for one sort of N input pages with W working frames, R0 = ceil(N/W):
+Page accounting for one sort of N input pages, R0 = ceil(N/W):
 
 | pass | reads (by the sort) | writes | frames held |
 |---|---|---|---|
-| 0 | 0 (the child reads N) | N | W reserved + the child's 1 |
-| each merge | N | N | W−1 pinned inputs + 1 reserved output |
-| final | N | 0 | up to W pinned inputs |
+| 0 | 0 (the scan reads N) | N | W − 1 reserved + the scan's 1 |
+| each merge | N (less carried runs) | N (less carried runs) | F pinned inputs + 1 reserved output |
+| final | N | 0 | up to F pinned inputs |
 
 ## 4. Joins
 
@@ -113,10 +116,12 @@ restart is a new heap scan that starts from directory page 0
 (`test_bnl_page_reads_follow_formula_plus_directory_pages`). The only join that
 accepts any condition; with no condition it is the cross product.
 
-**Sort-merge join** (`SortMergeJoin`), equality only. The left input is sorted and
-its final merge pass is streamed into the join like any sort. The right input must
+**Sort-merge join** (`SortMergeJoin`), equality only. Each input is sorted with the
+external sort above (B − 1 working frames plus the scan's page, §2). The left input's
+final merge pass is streamed into the join like any sort. The right input must
 be rewindable, so after sorting it is either one in-memory run (if it fits in the
-frames the left run did not use) or merged into one run file. The merge follows the
+frames the left run did not use, and the left merge still has a frame per run) or
+merged into one run file. The merge follows the
 spec's pseudocode: for every left tuple in a run of equal keys the right cursor is
 rewound to the mark (`TempReader.seek` / `ListCursor.seek`). **A run of equal keys
 larger than B** is never held in memory: it stays in the right run file, and each
@@ -129,13 +134,12 @@ rewind re-reads its pages through the pool. The spec's duplicate-key example
    fits, the table is built and the probe input streamed past it: no partitioning
    at all, cost M + N. (The spec's formula 3(M + N) assumes partitioning always
    happens.)
-2. *Otherwise partition.* P partitions, one reserved output frame each, both inputs
-   written by `h1(key) mod P`. P is `share` (B − 2 here) in general, but if the build
-   input is a base table its catalog page count M is known and
-   P = min(share, ceil(M / share) + 1): enough for each partition to fit in the
-   table, without writing hundreds of near-empty partition pages at large B.
-3. *Probe.* For each partition pair, build a table on L_i with h2 (my own FNV hash
-   with a different seed, bucket lists) and stream R_i past it.
+2. *Otherwise partition.* P = B − 1 partitions, one reserved output frame each, both
+   inputs written by `h1(key) mod P` (the right scan is idle while the left is
+   partitioned, §2).
+3. *Probe.* For each partition pair, build a table of up to B − 1 pages on L_i with h2
+   (my own FNV hash with a different seed, bucket lists) and stream R_i past it with the
+   last frame.
 
 Page accounting when partitioning: reads M + N (scans) + Σ|L_i| + Σ|R_i|, writes
 Σ|L_i| + Σ|R_i|; Σ|L_i| is slightly more than M because each partition's last page
@@ -197,9 +201,10 @@ valid as written.
 
 ## 8. Assumptions (one line each)
 
-- Plan schema: the course's JSON schema and sample plans are not published, so field names are exactly those of the JSON shown in M2 §2, with `limit` carrying its count in `n`; my own sample plans for every operator are in `samples/plans/` (run against `samples/make_sample_db.py`).
+- Plan schema: the course's JSON schema and sample plans are not published (the professor's reply, 2026-11-13), so field names are exactly those of the JSON shown in M2 §2, with `limit` carrying its count in `n`; my own sample plans for every operator are in `samples/plans/` (run against `samples/make_sample_db.py`).
 - `distinct` without `mode` means sort; `group_by` without `mode` means hash.
-- A trace's page ids and a plan's tables refer to files that already exist; nothing is created on the fly.
+- A sort reading a table counts the scan's pinned input page as one of its B run frames (§2).
+- Hash join builds in memory, without partitioning, when the build side fits (hybrid hashing, Shapiro 1986); otherwise it is the spec's Grace join with P = B − 1.
 
 ## 9. Sources
 
@@ -212,5 +217,6 @@ valid as written.
   1986.** Shapiro compares simple, Grace and hybrid hash join and shows that when the
   build relation fits in memory no partitioning is needed. That is the in-memory-first
   build in §4, added after my measurements showed pure Grace partitioning costing more
-  at large B than at small B. His partition-count rule (enough partitions that each fits)
-  is the P = ceil(M / frames) + 1 choice.
+  at large B than at small B. His condition for Grace join to work in two passes (each
+  partition must fit in memory, so roughly B ≥ √M) is the explanation of the B = 4
+  overflow in REPORT_M2.md §1.

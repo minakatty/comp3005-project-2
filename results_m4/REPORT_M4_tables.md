@@ -274,26 +274,26 @@ Nodes: 126. Median q-error **1.00**, worst **400.0**.
 
 | query | optimized I/O | unoptimized I/O | ratio | optimized s | unoptimized s |
 |---|---|---|---|---|---|
-| q01.sql | 126 | 126 | 1.00 | 0.02 | 0.02 |
-| q02.sql | 126 | 126 | 1.00 | 0.02 | 0.03 |
-| q03.sql | 126 | 126 | 1.00 | 0.02 | 0.02 |
-| q04.sql | 126 | 126 | 1.00 | 0.02 | 0.02 |
-| q05.sql | 126 | 1090 | 8.65 | 0.02 | 0.17 |
-| q06.sql | 142 | 142 | 1.00 | 0.04 | 0.04 |
-| q07.sql | 180 | 180 | 1.00 | 0.05 | 0.05 |
-| q08.sql | 128 | 251 | 1.96 | 0.03 | 0.09 |
-| q09.sql | 294 | 10710 | 36.43 | 0.34 | 3.77 |
-| q10.sql | 294 | 10710 | 36.43 | 0.35 | 7.41 |
-| q11.sql | 128 | 2579 | 20.15 | 0.07 | 0.41 |
+| q01.sql | 126 | 126 | 1.00 | 0.01 | 0.01 |
+| q02.sql | 126 | 126 | 1.00 | 0.01 | 0.01 |
+| q03.sql | 126 | 126 | 1.00 | 0.01 | 0.01 |
+| q04.sql | 126 | 126 | 1.00 | 0.01 | 0.01 |
+| q05.sql | 126 | 1282 | 10.17 | 0.01 | 0.14 |
+| q06.sql | 154 | 154 | 1.00 | 0.03 | 0.03 |
+| q07.sql | 203 | 203 | 1.00 | 0.04 | 0.04 |
+| q08.sql | 128 | 251 | 1.96 | 0.02 | 0.06 |
+| q09.sql | 294 | 10710 | 36.43 | 0.24 | 2.93 |
+| q10.sql | 294 | 10710 | 36.43 | 0.24 | 6.19 |
+| q11.sql | 128 | 2579 | 20.15 | 0.06 | 0.39 |
 | q12.sql | 6 | 7 | 1.17 | 0.00 | 0.01 |
-| q13.sql | 966 | 10710 | 11.09 | 0.37 | 3.70 |
-| q14.sql | 5122 | 24120 | 4.71 | 0.61 | 3.37 |
-| q15.sql | 716 | 680124 | 949.89 | 0.40 | 1429.88 |
-| q16.sql | 4257 | 396165 | 93.06 | 0.62 | 48.32 |
+| q13.sql | 966 | 10710 | 11.09 | 0.27 | 3.17 |
+| q14.sql | 5122 | 24120 | 4.71 | 0.59 | 2.78 |
+| q15.sql | 716 | 680124 | 949.89 | 0.36 | 1201.46 |
+| q16.sql | 4257 | 396165 | 93.06 | 0.50 | 38.36 |
 | q17.sql | 256 | 256 | 1.00 | 0.03 | 0.03 |
-| q18.sql | 132 | 132 | 1.00 | 0.02 | 0.02 |
-| q19.sql | 128 | 1874 | 14.64 | 0.02 | 0.27 |
-| q20.sql | 252 | 8001 | 31.75 | 0.31 | 5.55 |
+| q18.sql | 132 | 132 | 1.00 | 0.01 | 0.01 |
+| q19.sql | 128 | 1626 | 12.70 | 0.01 | 0.19 |
+| q20.sql | 252 | 8001 | 31.75 | 0.26 | 4.61 |
 
 Ratio range across the workload: 1.00 to 949.89.
 
@@ -301,14 +301,14 @@ Ratio range across the workload: 1.00 to 949.89.
 
 | rule off | total workload I/O | change vs all rules on |
 |---|---|---|
-| (none) | 13631 | |
-| 1 | 28756 | +15125 (+111.0%) |
-| 2 | 28758 | +15127 (+111.0%) |
-| 3 | 13631 | +0 (+0.0%) |
-| 4 | 13631 | +0 (+0.0%) |
-| 5 | 13631 | +0 (+0.0%) |
-| 6 | 148764 | +135133 (+991.4%) |
-| 7 | 13631 | +0 (+0.0%) |
+| (none) | 13666 | |
+| 1 | 28666 | +15000 (+109.8%) |
+| 2 | 28380 | +14714 (+107.7%) |
+| 3 | 13666 | +0 (+0.0%) |
+| 4 | 13666 | +0 (+0.0%) |
+| 5 | 13666 | +0 (+0.0%) |
+| 6 | 142431 | +128765 (+942.2%) |
+| 7 | 13666 | +0 (+0.0%) |
 
 ## 4. Where it breaks
 
@@ -322,13 +322,13 @@ nested_loop_join (e.eid = o.eid)                             est=4       actual=
 project [e.eid, e.name, e.pad]                               est=5       actual=374     reads=0 writes=0
 filter (e.region = 'r3' and e.state = 's3' and e.city = 'c3') est=5       actual=374     reads=0 writes=0
 seqscan Emp as e                                             est=4000    actual=4000    reads=126 writes=0
-project [o.eid, o.amount]                                    est=3000    actual=3000 x5   reads=0 writes=0
-seqscan Orders as o                                          est=3000    actual=3000 x5   reads=840 writes=0
+project [o.eid, o.amount]                                    est=3000    actual=3000 x5 reads=0 writes=0
+seqscan Orders as o                                          est=3000    actual=3000 x5 reads=840 writes=0
 ```
 
 Chosen plan: estimated cost 292, actual I/O **966**.
 
-- same plan with the join forced to **hash_join**: actual I/O 360
-- same plan with the join forced to **sort_merge_join**: actual I/O 414
+- same plan with the join forced to **hash_join**: actual I/O 348
+- same plan with the join forced to **sort_merge_join**: actual I/O 382
 - same plan with the join forced to **nested_loop_join**: actual I/O 966
 

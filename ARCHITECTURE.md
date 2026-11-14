@@ -69,7 +69,7 @@ Two properties of these contracts made the modules independent:
   avoided the `write_through` and `reserve` additions.
 - **The optimizer's cost model should be the executor's.** M4 uses the spec's
   formulas so the worked examples reproduce, while M2 does better in places (hash
-  join in memory, sort with B − 1 run frames). One shared module of cost functions,
+  join in memory when the build side fits). One shared module of cost functions,
   used by both and tested against measured counters, would remove that whole class of
   predicted-vs-actual gap.
 - **Bushy trees or at least a greedy fallback beyond ten relations**, and

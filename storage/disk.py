@@ -1,111 +1,125 @@
-"""Disk managers. The only code in the system that touches a file.
+"""The disk manager: the only code in the system that touches a file (M1 spec 2.1).
 
-DiskManager: one file of 4096-byte pages, page id = zero-based index in the file.
-FileSet:     several DiskManagers behind ONE buffer pool. The pool works on a single integer
-             key, so a page of file f with page id p is addressed as (f << 32) | p.
-NullDisk:    in-memory stand-in used by `storage trace` (pages are zeros, I/O is counted).
+One DiskManager per file. Pages are 4096 bytes, addressed by zero-based page id,
+with no header outside the pages. Every read_page and write_page call is counted.
+
+Counting goes to an IOStats object shared by every DiskManager of one Database.
+Module 2 sets `stats.sink` to the operator currently running, so each read and
+write is also attributed to the operator that caused it (M2 spec 1.4).
 """
 import os
-from .errors import StorageError
 
-PAGE_SIZE = 4096
-MASK = 0xFFFFFFFF
+from .errors import StorageError
+from .page import PAGE_SIZE
+
+
+class IOStats:
+    def __init__(self):
+        self.reads = 0
+        self.writes = 0
+        self.sink = None            # object with page_reads / page_writes, or None
+
+    def on_read(self):
+        self.reads += 1
+        if self.sink is not None:
+            self.sink.page_reads += 1
+
+    def on_write(self):
+        self.writes += 1
+        if self.sink is not None:
+            self.sink.page_writes += 1
+
+
+_next_id = [0]
+
+
+def _new_file_id():
+    _next_id[0] += 1
+    return _next_id[0]
 
 
 class DiskManager:
-    def __init__(self, path):
+    def __init__(self, path, stats=None):
         self.path = path
-        self.f = open(path, "r+b" if os.path.exists(path) else "w+b")
-        self.f.seek(0, 2)
-        size = self.f.tell()
+        self.stats = stats or IOStats()
+        self.file_id = _new_file_id()
+        if not os.path.exists(path):
+            open(path, "wb").close()
+        self._f = open(path, "r+b")
+        size = os.path.getsize(path)
         if size % PAGE_SIZE:
             raise StorageError(f"{path}: size {size} is not a multiple of {PAGE_SIZE}")
         self._n = size // PAGE_SIZE
-        self.reads = 0
-        self.writes = 0
-
-    def read_page(self, page_id):
-        if not 0 <= page_id < self._n:
-            raise StorageError(f"{os.path.basename(self.path)}: page {page_id} does not exist")
-        self.f.seek(page_id * PAGE_SIZE)
-        self.reads += 1                      # exactly one count per call
-        return bytearray(self.f.read(PAGE_SIZE))
-
-    def write_page(self, page_id, data):
-        if len(data) != PAGE_SIZE:
-            raise StorageError("a page must be exactly 4096 bytes")
-        if not 0 <= page_id < self._n:
-            raise StorageError(f"{os.path.basename(self.path)}: page {page_id} does not exist")
-        self.f.seek(page_id * PAGE_SIZE)
-        self.f.write(bytes(data))
-        self.writes += 1                     # exactly one count per call
-
-    def allocate_page(self):
-        """Zero-extends the file by one page. Not counted as a write: the page is counted
-        when the buffer pool writes it (eviction or flush)."""
-        pid = self._n
-        self._n += 1
-        self.f.seek(pid * PAGE_SIZE)
-        self.f.write(bytes(PAGE_SIZE))
-        return pid
 
     def num_pages(self):
         return self._n
 
-    def close(self):
-        if not self.f.closed:
-            self.f.flush()
-            self.f.close()
-
-
-class FileSet:
-    def __init__(self):
-        self.files = {}
-
-    def add(self, file_no, disk):
-        self.files[file_no] = disk
-
-    @property
-    def reads(self):
-        return sum(d.reads for d in self.files.values())
-
-    @property
-    def writes(self):
-        return sum(d.writes for d in self.files.values())
-
-    def read_page(self, gid):
-        return self.files[gid >> 32].read_page(gid & MASK)
-
-    def write_page(self, gid, data):
-        self.files[gid >> 32].write_page(gid & MASK, data)
-
-    def allocate_page(self, file_no=0):
-        return (file_no << 32) | self.files[file_no].allocate_page()
-
-    def num_pages(self, file_no):
-        return self.files[file_no].num_pages()
-
-    def close(self):
-        for d in self.files.values():
-            d.close()
-
-
-class NullDisk:
-    def __init__(self):
-        self.reads = 0
-        self.writes = 0
-        self._n = 0
+    def allocate_page(self):
+        """Reserve the next page id. The page's bytes reach the file on its first
+        write; until then a read returns zeros. Allocation is not a counted I/O."""
+        pid = self._n
+        self._n += 1
+        return pid
 
     def read_page(self, page_id):
-        self.reads += 1
-        return bytearray(PAGE_SIZE)
+        if not 0 <= page_id < self._n:
+            raise StorageError(f"{os.path.basename(self.path)}: page {page_id} does not exist "
+                               f"(file has {self._n} pages)")
+        self.stats.on_read()
+        self._f.seek(page_id * PAGE_SIZE)
+        data = self._f.read(PAGE_SIZE)
+        return data + bytes(PAGE_SIZE - len(data))
 
     def write_page(self, page_id, data):
-        self.writes += 1
+        if len(data) != PAGE_SIZE:
+            raise StorageError(f"write of {len(data)} bytes; pages are {PAGE_SIZE}")
+        if not 0 <= page_id < self._n:
+            raise StorageError(f"page {page_id} was never allocated")
+        self.stats.on_write()
+        self._f.seek(page_id * PAGE_SIZE)
+        self._f.write(data)
 
-    def allocate_page(self, file_no=0):
-        self._n += 1
-        return self._n - 1
+    def close(self):
+        if not self._f.closed:
+            self._f.flush()
+            self._f.close()
 
-    def num_pages(self, file_no=0):
+    def delete(self):
+        self.close()
+        if os.path.exists(self.path):
+            os.remove(self.path)
+
+
+class MemoryDisk:
+    """A disk with no file behind it, used by the `trace` command. Any page id
+    can be read (it reads as zeros); reads and writes are counted the same way."""
+
+    def __init__(self, stats=None):
+        self.path = "<memory>"
+        self.stats = stats or IOStats()
+        self.file_id = _new_file_id()
+        self._pages = {}
+        self._n = 0
+
+    def num_pages(self):
         return self._n
+
+    def allocate_page(self):
+        pid = self._n
+        self._n += 1
+        return pid
+
+    def read_page(self, page_id):
+        self.stats.on_read()
+        self._n = max(self._n, page_id + 1)
+        return self._pages.get(page_id, bytes(PAGE_SIZE))
+
+    def write_page(self, page_id, data):
+        self.stats.on_write()
+        self._pages[page_id] = bytes(data)
+
+    def close(self):
+        pass
+
+    def delete(self):
+        self._pages.clear()

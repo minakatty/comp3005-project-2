@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 db/
-demo/
-*.db
+db_*/
+*.tmp
 results_demo/
+traces_demo/

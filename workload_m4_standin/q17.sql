@@ -1,0 +1,1 @@
+SELECT city FROM Emp WHERE age < 22 UNION SELECT city FROM Emp WHERE age > 68;

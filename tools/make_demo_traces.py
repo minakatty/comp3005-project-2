@@ -1,18 +1,29 @@
-"""Writes five SYNTHETIC trace files for testing the measurement pipeline (one page id per line).
-These are NOT the instructor's traces. Replace them with the published ones for the report."""
-import os, random, sys
+"""Write five synthetic buffer-pool traces, so tools/m1_measure.py can run before the
+published traces are downloaded. THESE ARE NOT THE COURSE TRACES. Only trace 3's
+shape is taken from the spec (an 80-page file scanned sequentially ten times).
 
-out = sys.argv[1] if len(sys.argv) > 1 else "traces_demo"
-os.makedirs(out, exist_ok=True)
-rnd = random.Random(42)
+    python tools/make_demo_traces.py traces_demo
+"""
+import os
+import random
+import sys
 
-def write(name, ids):
-    with open(os.path.join(out, name), "w") as f:
-        f.write("\n".join(str(i) for i in ids) + "\n")
 
-write("trace1.txt", [rnd.choice(range(20)) if rnd.random() < 0.8 else rnd.randrange(20, 400) for _ in range(5000)])  # hot set
-write("trace2.txt", [rnd.randrange(300) for _ in range(5000)])                                                      # uniform
-write("trace3.txt", [i for _ in range(10) for i in range(80)])                  # 80-page file scanned 10 times, like the spec's trace 3
-write("trace4.txt", [x for r in range(20) for x in (list(range(100, 190)) + [0, 1, 2, 3] * 10)])                     # scan + hot pages
-write("trace5.txt", [rnd.randrange(40) for _ in range(5000)])                                                       # small working set
-print("wrote 5 demo traces to", out)
+def main(out):
+    os.makedirs(out, exist_ok=True)
+    rnd = random.Random(3005)
+    traces = {
+        "trace1.txt": [rnd.randint(0, 199) for _ in range(5000)],                       # uniform random
+        "trace2.txt": [int(rnd.paretovariate(1.2)) % 300 for _ in range(5000)],          # skewed, hot set
+        "trace3.txt": list(range(80)) * 10,                                              # repeated scan (spec)
+        "trace4.txt": [p for _ in range(20) for p in (list(range(10)) + [rnd.randint(10, 400) for _ in range(30)])],
+        "trace5.txt": [p for k in range(50) for p in range(k * 4, k * 4 + 40)],           # sliding window
+    }
+    for name, ids in traces.items():
+        with open(os.path.join(out, name), "w") as f:
+            f.write("\n".join(map(str, ids)) + "\n")
+    print(f"wrote {len(traces)} synthetic traces to {out}")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1] if len(sys.argv) > 1 else "traces_demo")

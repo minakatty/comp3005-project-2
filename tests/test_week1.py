@@ -198,7 +198,8 @@ class Providers(unittest.TestCase):
             self.skipTest("M1 storage package not on the path")
         import tempfile
         db = Database(tempfile.mkdtemp(), frames=4)
-        db.catalog.create_table("R", "a:INT,b:VARCHAR(10)")
+        from storage.record import parse_schema
+        db.create_table("R", parse_schema("a:INT,b:VARCHAR(10)"))
         h = db.heap("R")
         for i in range(5):
             h.insert((i, "x" if i % 2 else "y"))

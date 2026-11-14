@@ -272,6 +272,11 @@ class Tokenizer:
             if self._peek() == "=":
                 self._advance()
                 self._push(TokType.LE, mark)
+            elif self._peek() == ">":
+                # Project 2: SQL spells not-equal '<>'. Accepting it here lets
+                # condition strings written by Module 3 parse unchanged.
+                self._advance()
+                self._push(TokType.NE, mark)
             else:
                 self._push(TokType.LT, mark)
             return

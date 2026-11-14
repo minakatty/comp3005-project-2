@@ -1,0 +1,1 @@
+SELECT did FROM Emp WHERE salary > 70000 INTERSECT SELECT did FROM Dept WHERE budget > 20000;

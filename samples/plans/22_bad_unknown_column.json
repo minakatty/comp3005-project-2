@@ -1,0 +1,8 @@
+{
+  "op": "filter",
+  "condition": "R.zzz > 1",
+  "child": {
+    "op": "seqscan",
+    "table": "R"
+  }
+}

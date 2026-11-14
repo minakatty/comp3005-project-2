@@ -195,11 +195,22 @@ valid as written.
 - `limit.n` (also accepted as `count` or `limit`).
 - `intersect_all`, `except_all`: the bag versions.
 
-## 8. Sources
+## 8. Assumptions (one line each)
 
-*Write these yourself.* Candidates: Graefe, *Volcano* (IEEE TKDE 1994) for the
-open/next/close interface and why sort and hash-build are the only materialising
-points; Shapiro, *Join Processing in Database Systems with Large Main Memories*
-(TODS 1986) for Grace and hybrid hash join, which is where the in-memory-first
-build in Section 4 comes from; Ramakrishnan & Gehrke ch. 13–14 for the external sort
-and join cost formulas.
+- Plan schema: the course's JSON schema and sample plans are not published, so field names are exactly those of the JSON shown in M2 §2, with `limit` carrying its count in `n`; my own sample plans for every operator are in `samples/plans/` (run against `samples/make_sample_db.py`).
+- `distinct` without `mode` means sort; `group_by` without `mode` means hash.
+- A trace's page ids and a plan's tables refer to files that already exist; nothing is created on the fly.
+
+## 9. Sources
+
+- **Graefe, "Volcano — An Extensible and Parallel Query Evaluation System", IEEE TKDE
+  1994.** The open / next / close protocol and the rule that only blocking operators
+  (sort, hash build) materialise come from here. It changed where my blocking work
+  happens: sort runs pass 0 and every merge except the last inside `open`, and streams
+  the last merge through `next`, as Volcano's sort does.
+- **Shapiro, "Join Processing in Database Systems with Large Main Memories", ACM TODS
+  1986.** Shapiro compares simple, Grace and hybrid hash join and shows that when the
+  build relation fits in memory no partitioning is needed. That is the in-memory-first
+  build in §4, added after my measurements showed pure Grace partitioning costing more
+  at large B than at small B. His partition-count rule (enough partitions that each fits)
+  is the P = ceil(M / frames) + 1 choice.

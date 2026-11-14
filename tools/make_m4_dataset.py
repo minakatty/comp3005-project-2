@@ -1,5 +1,5 @@
-"""A STAND-IN dataset and 20-query workload for the Module 4 report, built so the
-report tooling can run before the course dataset is downloaded.
+"""The dataset and 20-query workload for the Module 4 report. The course does not
+publish one, so this is mine (DESIGN_M4.md §6).
 
 Two kinds of correlation are planted on purpose:
   Emp.city, Emp.state, Emp.region   one-to-one: state and region are functions of city
@@ -7,7 +7,6 @@ Two kinds of correlation are planted on purpose:
 
     python tools/make_m4_dataset.py --db db_m4 --workload workload_m4
 
-Replace both with the published dataset and queries for the real report.
 """
 import argparse
 import os

@@ -5,11 +5,4 @@ db_*/
 *.tmp
 results_demo/
 traces_demo/
-mydb/
-emp.csv
-dept.csv
-q.sql
-q.json
-plan.json
-results_demo/
-traces_demo/
+samples_db/

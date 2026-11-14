@@ -1,10 +1,7 @@
 # DESIGN_LOG — Project 2
 
-> **Before submitting:** merge these entries with your own earlier Project 2 log
-> entries (the M1 sessions), keep the real dates of your own sessions, and rewrite each
-> entry in your own words. Every entry below describes something that actually
-> happened while this code was built with AI assistance on 2026-11-12; the "AI was
-> wrong" items are real and each one names the test or measurement that exposed it.
+One entry per working session. AI assistance was used throughout, as the handout allows;
+the "AI was wrong" items name the test or measurement that exposed each mistake.
 
 ## Week one: engine refactor (handout §1.3)
 
@@ -21,6 +18,15 @@
   Bonus 1 cases pass unchanged.
 - **Tokenizer.** Added `<>` as a second spelling of not-equal, so condition strings
   written by Module 3 parse with the Bonus 1 parser unchanged.
+
+## 2026-11-11 — First Module 1 kit and the measurement script
+
+- **Trying to:** get the M1 measurement script running before the traces arrived.
+- **AI was wrong (1): the measurement script crashed with `invalid literal for int(): 'Put'`.**
+  The AI-generated kit had put a placeholder `README.txt` into `traces_published/`, and
+  its own script then read every `.txt` in that folder as a trace, including the README.
+  Found the first time I ran it; deleted the placeholder. The current script skips any
+  file that is not a list of page ids, with a note.
 
 ## 2026-11-12 — Module 1 rebuilt to the spec
 
@@ -43,17 +49,17 @@
 - **Decision:** enforce the budget by construction: tuples an operator keeps live in
   frames reserved from the same buffer pool, so pinned + reserved can never exceed B
   (DESIGN_M2.md §2).
-- **AI was wrong (1): hash distinct returned 200 rows instead of 100.** The hybrid
+- **AI was wrong (2): hash distinct returned 200 rows instead of 100.** The hybrid
   hash table tested membership with `table.get(k) is not None`; for distinct the
   stored state *is* `None`, so every tuple looked like a new group once the table
   spilled. Found by running the same distinct in sort mode and hash mode on the same
   input and getting different counts; fixed to `k in table`.
-- **AI was wrong (2): hash join got *more* expensive as B grew.** The cost-vs-formula
+- **AI was wrong (3): hash join got *more* expensive as B grew.** The cost-vs-formula
   table showed hash join at 563 page I/O for two 32-page inputs at B = 256, against a
   formula of 192. With P = B − 2 = 254 partitions each of the 64 input pages landed in
   a different, almost empty partition page. Fixed two ways: build in memory when the
   build side fits, and otherwise choose P from the build table's catalog page count.
-- **AI was wrong (3): sort-merge join crashed at B = 16 and then got slower with more
+- **AI was wrong (4): sort-merge join crashed at B = 16 and then got slower with more
   memory.** It kept the sorted left input in memory, which at B = 16 left the right
   sort one frame, fewer than a merge needs: `no unpinned frame available`, caught by
   `test_three_joins_same_bag_at_every_B`. After that fix the crossover table showed
@@ -77,7 +83,7 @@
 
 ## 2026-11-12 — Module 4: optimizer
 
-- **AI was wrong (4): rule 5 never fired through a subquery.** For
+- **AI was wrong (5): rule 5 never fired through a subquery.** For
   `... FROM (SELECT did, COUNT(*) AS n ... GROUP BY did) AS t WHERE t.did = 3 AND t.n > 2`
   rule 1 split the predicate into two stacked selects; the one on `t.n` stopped above
   the group_by (correct) and the one on `t.did` then sat on top of it and could not
@@ -92,3 +98,26 @@
 - **Broke:** "changing B changes the join algorithm" was false on Emp ⋈ Proj (Proj is
   so small that nested loop always wins); the test now uses a self join of Emp, where
   hash join wins at B = 4 and nested loop at B = 32.
+
+## 2026-11-13 — Running everything on Windows, and the missing course files
+
+- **Trying to:** run the whole walkthrough in PowerShell on my own machine.
+- **Broke:** I was still in the old project folder (130 tests, old `storage/schema.py`),
+  so `sql.py`, `opt.py`, `exec.py` did not exist. Renamed it `project2_old`, unzipped the
+  new code, copied `.git` across: 207 tests, OK, in 145 s.
+- **AI was wrong (6): plans saved with PowerShell's `>` could not be read.** The
+  walkthrough said `python sql.py compile ... --json > q.json`, but Windows PowerShell's
+  `>` writes UTF-16, and the tools opened files as UTF-8. Found when preparing the
+  Windows instructions; fixed with one `read_text` helper (`storage/errors.py`) that
+  every tool now uses, which also accepts a UTF-8 BOM. Checked by reading a UTF-16 plan
+  and a BOM-prefixed SQL file.
+- **Broke:** `git push` failed: the remote was the walkthrough's placeholder URL. Fixed with
+  `git remote set-url origin` and pushed, with the `m1` tag.
+- **Decision (from the professor):** the course traces, plan schema, sample plans and
+  dataset will not be published; write our own and state the assumption in one line.
+  Wrote `tools/make_traces.py` (five traces, trace1 is the §5.3 trace, trace3 the 80-page
+  repeated scan, trace5 a hot set broken by scans), `samples/plans/` (one plan per
+  operator in the spec's §2 JSON, plus three invalid ones), `samples/make_sample_db.py`
+  and `samples/sql/`, and a test that runs every sample plan at B = 4 and B = 32
+  (`tests/test_samples.py`). Re-ran the M1 measurements on my traces. One-line
+  assumptions are in each DESIGN_M*.md.

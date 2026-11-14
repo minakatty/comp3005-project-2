@@ -1,0 +1,16 @@
+{
+  "op": "hash_join",
+  "condition": "R.b = S.b",
+  "left": {
+    "op": "filter",
+    "condition": "R.a > 500",
+    "child": {
+      "op": "seqscan",
+      "table": "R"
+    }
+  },
+  "right": {
+    "op": "seqscan",
+    "table": "S"
+  }
+}

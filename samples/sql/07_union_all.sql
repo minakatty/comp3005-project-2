@@ -1,0 +1,1 @@
+SELECT city FROM Emp UNION ALL SELECT city FROM Dept;

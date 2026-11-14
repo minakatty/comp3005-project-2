@@ -1,6 +1,6 @@
 """The three Module 1 measurements (M1 spec Section 8), written as markdown tables.
 
-    python tools/m1_measure.py --traces traces_published --out results_m1
+    python tools/m1_measure.py --traces traces --out results_m1
 
 Measurement 1 (capacity) and 3 (scan cost) build their own tables in a scratch
 database. Measurement 2 reads every *.txt in --traces whose lines are page ids
@@ -108,7 +108,7 @@ def scan_cost(tmp):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--traces", default="traces_published")
+    ap.add_argument("--traces", default="traces")
     ap.add_argument("--out", default="results_m1")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)

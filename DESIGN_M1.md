@@ -47,12 +47,12 @@ for the life of the record. An insert of L bytes needs `L + 4` free bytes.
 
 ### A real page from my own files
 
-*Replace this dump with one from your own database before you submit:*
+Produced by
 `python -m storage create-table --db db --name R --schema "a:INT,b:VARCHAR(5),c:INT"`,
 `python -m storage load --db db --table R --file data/sample_r.csv`,
 `python -m storage layout --db db --table R --page 1 --hex`.
-
-`data/sample_r.csv` holds `42,bob,7`, `43,amy,9` and `44,"o,k",11`.
+`data/sample_r.csv` holds `42,bob,7`, `43,amy,9` and `44,"o,k",11`. The bytes are the
+same on every machine (the format fixes every byte).
 
 ```
 data page 1
@@ -224,8 +224,8 @@ reuses the space.
 **Scan counters and the catalog.** Opening the database reads the catalog through
 the pool (2 page reads for a fresh catalog). `scan --json` resets the counters after
 that, so its stats describe the scan only; the catalog reads are reported separately
-as the extra field `catalog_reads`. (This is the question I would put to the
-professor; it is one line in `storage/cli.py::cmd_scan` to change.)
+as the extra field `catalog_reads`.
+**Assumption:** `scan --json` stats exclude the catalog reads made when the database opens.
 
 ## 7. Scan
 
@@ -258,11 +258,22 @@ Errors name the line and the column: `line 3, column a: 'x3' is not an INT`,
 The CLI catches `StorageError` once and prints `error: <message>`; there is never a
 stack trace.
 
-## 10. Sources
+## 10. Assumptions (one line each)
 
-*Write these yourself, from what you actually read.* The handout asks for at least two
-sources and what each changed in the design. Candidates that match this code:
-Ramakrishnan & Gehrke ch. 9 (slotted pages and the heap-file page directory, which is
-the structure of Section 4), the LRU-K paper (O'Neil et al., SIGMOD 1993) for why
-plain LRU fails on the repeated scan in REPORT_M1.md, and Petrov, *Database Internals*
-ch. 3–5 for page layouts and buffer management.
+- Traces: the course traces are not published, so I use my own five (`traces/`, REPORT_M1.md §2); trace1 is the spec's §5.3 trace.
+- Scan stats exclude catalog reads (§6).
+- The largest storable record is 4084 bytes, the most an insert needing L + 4 ≤ 4088 can hold (§3).
+
+## 11. Sources
+
+- **Ramakrishnan and Gehrke, ch. 9 (heap files and page formats).** Two heap-file
+  organisations are compared there: a linked list of data pages, and a directory of
+  pages whose entries hold each page's free space. The second is the spec's layout, and
+  R&G's argument for it (an insert reads directory pages, not data pages, to find room)
+  is §4's first-fit strategy. Their point that a slotted page can move a record inside
+  the page without changing its rid, because the rid names the slot, is what makes
+  compaction with stable slot numbers safe.
+- **Petrov, *Database Internals*, ch. 3 (slotted pages).** Petrov describes slotted
+  pages that leave deleted records in place and defragment the page later, when space is
+  actually needed. That is the policy in §4: compact on the insert that needs the
+  space, never on delete, which also keeps the spec's §3.2 example exact.

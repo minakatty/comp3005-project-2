@@ -1,0 +1,12 @@
+{
+  "op": "sort_merge_join",
+  "condition": "DR.k = DS.k",
+  "left": {
+    "op": "seqscan",
+    "table": "DR"
+  },
+  "right": {
+    "op": "seqscan",
+    "table": "DS"
+  }
+}

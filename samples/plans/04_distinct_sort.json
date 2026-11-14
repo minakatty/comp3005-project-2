@@ -1,0 +1,14 @@
+{
+  "op": "distinct",
+  "mode": "sort",
+  "child": {
+    "op": "project",
+    "columns": [
+      "R.dept"
+    ],
+    "child": {
+      "op": "seqscan",
+      "table": "R"
+    }
+  }
+}

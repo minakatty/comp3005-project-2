@@ -1,0 +1,7 @@
+{
+  "op": "sort",
+  "child": {
+    "op": "seqscan",
+    "table": "R"
+  }
+}

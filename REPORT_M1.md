@@ -1,9 +1,9 @@
 # REPORT_M1 — Storage engine measurements
 
-Machine: *fill in (CPU, RAM, OS)*. Language: Python *3.x.y* (`python --version`).
-Every number below comes from `python tools/m1_measure.py --traces traces_published
---out results_m1`, which writes `results_m1/REPORT_M1_tables.md`. Page counts are
-deterministic, so they are the same on any machine.
+Machines: the tables were produced on Linux (Intel Xeon 2.10 GHz, 2 cores, 7 GB RAM, Python 3.13.18) and reproduced on my Windows PC (8 logical processors, Python 3.13.14). Page counts, hit counts and comparisons are deterministic and identical on both; only wall-clock seconds differ.
+
+Every number below comes from `python tools/m1_measure.py --traces traces --out results_m1`,
+which writes `results_m1/REPORT_M1_tables.md`.
 
 ## 1. Capacity: computed against measured
 
@@ -32,21 +32,81 @@ page: 3000 / 255 = 11.8 → 12 data pages, plus page 0.
 
 ## 2. Replacement policies
 
-> **Placeholder.** The table in `results_m1/REPORT_M1_tables.md` must be produced from
-> the **five published traces** (`traces_published/`). The numbers that are here now
-> came from `tools/make_demo_traces.py`, synthetic traces I made only so the script
-> could run; only trace 3's shape (an 80-page file scanned ten times) matches the spec.
-> Replace the whole table, and recheck every sentence below against it.
+**Assumption:** the course traces are not published, so the five traces are my own
+(`traces/`, written by `tools/make_traces.py`, fixed seed), modelled on the spec.
 
-Hit rate = hits / fetches, both policies, B = 4, 16, 64, 256 (twenty rows per policy):
-paste `results_m1/REPORT_M1_tables.md` §2 here.
+| trace | what it is | what it tests |
+|---|---|---|
+| trace1 | 1 2 3 1 4 2, the M1 §5.3 worked trace | correctness: at B = 3, LRU 1 hit / 5 misses / 2 evictions, CLOCK 2 / 4 / 1 (`python -m storage trace --file traces/trace1.txt --frames 3 --policy lru --json`) |
+| trace2 | 5000 fetches, 80 % to 20 hot pages, 20 % to 400 cold ones | ordinary locality |
+| trace3 | an 80-page file scanned sequentially ten times (the spec's trace 3) | sequential flooding |
+| trace4 | 5000 fetches uniform over 200 pages | no locality at all |
+| trace5 | bursts on 10 hot pages, each followed by a one-pass scan of 100 new pages | does a scan flush the hot set? |
+
+Hit rate = hits / fetches, both policies, B = 4, 16, 64, 256:
+
+| trace | policy | B | hits | misses | evictions | hit rate |
+|---|---|---|---|---|---|---|
+| trace1.txt | lru | 4 | 2 | 4 | 0 | 0.3333 |
+| trace1.txt | lru | 16 | 2 | 4 | 0 | 0.3333 |
+| trace1.txt | lru | 64 | 2 | 4 | 0 | 0.3333 |
+| trace1.txt | lru | 256 | 2 | 4 | 0 | 0.3333 |
+| trace1.txt | clock | 4 | 2 | 4 | 0 | 0.3333 |
+| trace1.txt | clock | 16 | 2 | 4 | 0 | 0.3333 |
+| trace1.txt | clock | 64 | 2 | 4 | 0 | 0.3333 |
+| trace1.txt | clock | 256 | 2 | 4 | 0 | 0.3333 |
+| trace2.txt | lru | 4 | 597 | 4403 | 4399 | 0.1194 |
+| trace2.txt | lru | 16 | 2284 | 2716 | 2700 | 0.4568 |
+| trace2.txt | lru | 64 | 4070 | 930 | 866 | 0.8140 |
+| trace2.txt | lru | 256 | 4474 | 526 | 270 | 0.8948 |
+| trace2.txt | clock | 4 | 591 | 4409 | 4405 | 0.1182 |
+| trace2.txt | clock | 16 | 2175 | 2825 | 2809 | 0.4350 |
+| trace2.txt | clock | 64 | 4038 | 962 | 898 | 0.8076 |
+| trace2.txt | clock | 256 | 4476 | 524 | 268 | 0.8952 |
+| trace3.txt | lru | 4 | 0 | 800 | 796 | 0.0000 |
+| trace3.txt | lru | 16 | 0 | 800 | 784 | 0.0000 |
+| trace3.txt | lru | 64 | 0 | 800 | 736 | 0.0000 |
+| trace3.txt | lru | 256 | 720 | 80 | 0 | 0.9000 |
+| trace3.txt | clock | 4 | 0 | 800 | 796 | 0.0000 |
+| trace3.txt | clock | 16 | 0 | 800 | 784 | 0.0000 |
+| trace3.txt | clock | 64 | 0 | 800 | 736 | 0.0000 |
+| trace3.txt | clock | 256 | 720 | 80 | 0 | 0.9000 |
+| trace4.txt | lru | 4 | 97 | 4903 | 4899 | 0.0194 |
+| trace4.txt | lru | 16 | 397 | 4603 | 4587 | 0.0794 |
+| trace4.txt | lru | 64 | 1578 | 3422 | 3358 | 0.3156 |
+| trace4.txt | lru | 256 | 4800 | 200 | 0 | 0.9600 |
+| trace4.txt | clock | 4 | 98 | 4902 | 4898 | 0.0196 |
+| trace4.txt | clock | 16 | 394 | 4606 | 4590 | 0.0788 |
+| trace4.txt | clock | 64 | 1560 | 3440 | 3376 | 0.3120 |
+| trace4.txt | clock | 256 | 4800 | 200 | 0 | 0.9600 |
+| trace5.txt | lru | 4 | 758 | 2242 | 2238 | 0.2527 |
+| trace5.txt | lru | 16 | 1900 | 1100 | 1084 | 0.6333 |
+| trace5.txt | lru | 64 | 1900 | 1100 | 1036 | 0.6333 |
+| trace5.txt | lru | 256 | 1990 | 1010 | 754 | 0.6633 |
+| trace5.txt | clock | 4 | 748 | 2252 | 2248 | 0.2493 |
+| trace5.txt | clock | 16 | 1900 | 1100 | 1084 | 0.6333 |
+| trace5.txt | clock | 64 | 1900 | 1100 | 1036 | 0.6333 |
+| trace5.txt | clock | 256 | 1970 | 1030 | 774 | 0.6567 |
+
+**Reading the table.**
+- *trace1* fits in every pool from B = 4 up, so 2 hits (the second 1 and the second 2)
+  and no evictions; the B = 3 run above is the spec's check.
+- *trace2*: LRU is slightly ahead of CLOCK at every B (0.457 against 0.435 at B = 16),
+  because LRU's exact recency keeps the 20 hot pages slightly better than one reference
+  bit can; at B = 256 the whole hot set and most cold pages fit and both reach ≈ 0.895.
+- *trace4*: with no locality both policies get the hit rate of pure chance, B / 200
+  (0.02, 0.08, 0.32), and 0.96 once all 200 pages fit. No policy can do better here.
+- *trace5*: both reach 0.633 at B = 16 and 64, which is exactly 1900 / 3000: every
+  hot-set fetch except the first ten of each burst is a hit, and every scan page misses.
+  The scan *does* flush the hot set: after each 100-page scan the 10 hot pages are gone
+  even at B = 64, so each burst starts with 10 misses again. Only at B = 256 do some hot
+  pages survive a scan (0.663).
 
 ### Trace 3: a repeated sequential scan of 80 pages
 
 Measured: at B = 64, **LRU achieves a hit rate of 0**: 800 fetches, 800 misses, 736
-evictions. (With the synthetic trace 3 CLOCK also gets 0; recheck with the published
-one.) At B = 256 the file fits and both get 720 / 800 = 0.90, the ten passes minus the
-first.
+evictions. CLOCK also gets 0. At B = 256 the file fits and both get 720 / 800 = 0.90,
+every pass after the first.
 
 **Mechanism, in two sentences.** When the 65th page of a pass is fetched, the least
 recently used page is page 0, exactly the page the next pass needs first; LRU evicts
@@ -60,9 +120,9 @@ CLOCK does not fix this either: it approximates LRU, every frame's reference bit
 set by the time the hand comes round, so the sweep clears them all and evicts in
 FIFO order, which on a cyclic trace is the same choice LRU makes.
 
-**Which policy I would ship.** *Decide from the published table; my reasoning so
-far:* CLOCK. On every trace in my runs it is within a few percent of LRU (equal on the
-uniform and looping traces, slightly worse on the skewed one), and it costs one bit
+**Which policy I would ship: CLOCK.** On every trace it is within a few percent of
+LRU (equal on the looping and scan traces, equal within noise on the uniform one, about
+2 points behind on the hot/cold trace), and it costs one bit
 and a hand move per fetch instead of a reordering of a linked list on *every* hit,
 which is what a real system pays under concurrency (a hit in LRU writes shared state;
 a hit in CLOCK sets one bit). Neither policy survives sequential flooding, so the
@@ -92,5 +152,16 @@ that materialised the table would show the opposite: B = 2 could not hold it at 
 
 ## Sources
 
-*Your two sources, and what each changed in the design (handout §8): see
-DESIGN_M1.md §10 for candidates.*
+- **O'Neil, O'Neil and Weikum, "The LRU-K Page Replacement Algorithm for Database Disk
+  Buffering", SIGMOD 1993.** Its motivation is the situation of trace 3 and trace 5:
+  LRU cannot tell a page referenced once by a scan from a page referenced often, so a
+  scan flushes the hot set. This changed what I tested: I added trace5 to measure the
+  flushing directly, and it is why my "ship" answer says the real fix is scan
+  resistance (LRU-2 / 2Q, or a private ring of frames for scans), not a better
+  general-purpose policy.
+- **Ramakrishnan and Gehrke, *Database Management Systems*, 3rd ed., ch. 9 (the buffer
+  manager and page formats).** Pin counts, dirty bits and "never replace a pinned frame"
+  come from its buffer manager section, and so does the definition of cost used in my
+  tables: a fetch of a resident page costs no I/O. That is why the scan-cost table
+  reports reads and hits separately, and why "reads should be roughly 500 at every B" is
+  the right expectation for a single scan that never revisits a page.

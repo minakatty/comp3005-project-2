@@ -94,8 +94,10 @@ tests/         all of the above
 ```
 
 Measurement output: `results_m1/`, `results_m2/`, `results_m4/` (from the scripts in
-`tools/`); `workload_m4_standin/` is the stand-in query set REPORT_M4.md uses until the
-published workload is in place. **`TODO_BEFORE_SUBMIT.md` lists what still needs you.**
+`tools/`); `traces/` (my five buffer-pool traces), `samples/` (sample plans for every
+operator, sample SQL, `make_sample_db.py`), `workload_m4/` (the 20 optimizer queries).
+The course does not publish its traces, plans or dataset; every assumption that follows
+from that is one line in the "Assumptions" section of the DESIGN_M*.md it affects. **`TODO_BEFORE_SUBMIT.md` lists what still needs you.**
 
 Documents: `GRAMMAR.md` (Bonus 1), `DESIGN_M1.md` … `DESIGN_M4.md`, `REPORT_M1.md` …
 `REPORT_M4.md`, `GRAMMAR_SQL.md`, `ARCHITECTURE.md`, `DESIGN_LOG.md`.

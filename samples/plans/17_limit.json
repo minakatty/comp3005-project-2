@@ -1,0 +1,17 @@
+{
+  "op": "limit",
+  "n": 10,
+  "child": {
+    "op": "sort",
+    "keys": [
+      [
+        "R.salary",
+        "desc"
+      ]
+    ],
+    "child": {
+      "op": "seqscan",
+      "table": "R"
+    }
+  }
+}

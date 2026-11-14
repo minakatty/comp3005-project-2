@@ -129,10 +129,20 @@ third element of each `group_by` aggregate (its output name), `limit.n`, and the
 with the same shape (`tests/test_m3.py::SpecExamples`), and no plan contains a
 physical operator name (`assertClean`).
 
-## 5. Sources
+## 5. Assumptions (one line each)
 
-*Write these yourself.* Candidates: Nystrom, *Crafting Interpreters* ("Parsing
-Expressions", "Statements and State") for growing a recursive-descent parser to a
-larger grammar; the PostgreSQL documentation on SELECT, for ORDER BY on a column not
-in the select list and the DISTINCT restriction in Section 2.4; Ramakrishnan & Gehrke
-ch. 5 for SQL's bag semantics.
+- Logical plan schema and sample catalog: not published, so node and field names are exactly those of M3 §5, plus `project.as`, a third (name) element per aggregate and `limit.n`; my sample catalog is `samples/make_sample_db.py` (Emp, Dept) and the §5 examples are `samples/sql/`.
+- ORDER BY and LIMIT bind to the select block they follow, not to a whole set operation.
+
+## 6. Sources
+
+- **The PostgreSQL documentation, "SELECT" (sections on ORDER BY, DISTINCT and UNION).**
+  It settled two decisions: ORDER BY may name a column that is not in the select list
+  (so I carry it through an extended projection and drop it after the sort), but not when
+  SELECT DISTINCT is used, because the sort key would then be ambiguous per output row; and
+  UNION / INTERSECT / EXCEPT remove duplicates while UNION ALL does not.
+- **Nystrom, *Crafting Interpreters*, ch. 6 "Parsing Expressions" and ch. 8 "Statements
+  and State".** The same layering I used in Bonus 1, scaled up: one method per
+  grammar rule, statements as a loop over `statement` separated by `;`, and panic-mode
+  error reporting that stops at the first error, which is what the spec asks for
+  ("panic mode is enough").

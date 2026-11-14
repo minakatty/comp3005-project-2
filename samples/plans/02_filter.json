@@ -1,0 +1,8 @@
+{
+  "op": "filter",
+  "condition": "R.a > 500 and R.b = 'cs'",
+  "child": {
+    "op": "seqscan",
+    "table": "R"
+  }
+}

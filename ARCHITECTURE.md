@@ -58,8 +58,6 @@ Two properties of these contracts made the modules independent:
 
 ## What I would do differently if I started again
 
-*This page is yours to write; these are the points I would start from.*
-
 - **A typed plan object instead of raw dicts between M3 and M4.** Rewrites over
   nested dictionaries made every rule re-derive column lists from scratch
   (`logical.props` is called again and again). A small class per logical node, with

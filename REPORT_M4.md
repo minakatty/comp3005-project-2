@@ -1,20 +1,19 @@
 # REPORT_M4 — Optimizer measurements
 
-> **Placeholder data.** The spec's measurements are on *the twenty supplied queries
-> and the supplied dataset*, which were not available when this was written. Every
-> number below comes from a **stand-in** dataset and workload made by
-> `tools/make_m4_dataset.py` (Emp 4 000 rows, Orders 3 000, Dept 50, Proj 400; the
-> 20 queries are in `workload_m4_standin/`), with two correlations planted on purpose
-> (city → state → region one-to-one, salary rising with age). Rerun on the real data:
->
-> ```
-> for t in <tables>: python opt.py analyze --db <db> --table $t
-> python tools/m4_measure.py --db <db> --workload <queries dir> --frames 4 --out results_m4
-> ```
->
-> then replace the tables and recheck every sentence. The method and the tooling stay.
+**Assumption:** the course dataset and twenty-query workload are not published, so both
+are my own: `python tools/make_m4_dataset.py --db db_m4 --workload workload_m4` builds Emp
+(4 000 rows), Orders (3 000), Dept (50) and Proj (400) and writes the 20 queries. Two
+correlations are planted on purpose so Section 4 has something to break: city, state and
+region are one-to-one, and salary rises with age.
 
-Machine: *fill in*. Python *3.x.y*. B = 4 throughout (the smallest budget the
+To reproduce:
+
+```
+python tools/make_m4_dataset.py --db db_m4 --workload workload_m4
+python tools/m4_measure.py --db db_m4 --workload workload_m4 --frames 4 --analyze --out results_m4
+```
+
+Machines: the tables were produced on Linux (Intel Xeon 2.10 GHz, 2 cores, 7 GB RAM, Python 3.13.18) and the tools were rerun on my Windows PC (8 logical processors, Python 3.13.14). Page counts and comparisons are deterministic and identical on both; only wall-clock seconds differ. B = 4 throughout (the smallest budget the
 executor is graded at, and the one where plan choice matters most). Full per-node
 tables: `results_m4/REPORT_M4_tables.md`.
 
@@ -164,3 +163,12 @@ gives sel = 1/10 for the conjunction directly, or functional-dependency degrees
 are determined by city so their predicates add a factor of 1. A two-dimensional
 histogram on (age, salary) would do the same for the range-correlated pair, which q04
 exercises (`age > 60 AND salary > 60000`).
+
+## Sources
+
+- **Leis et al., VLDB 2015** (DESIGN_M4.md §7): errors multiply through joins and come
+  mainly from independence on correlated columns; §1's worst genuine error (75×) is exactly
+  that, and q13's join inherits it.
+- **Selinger et al., SIGMOD 1979**: the plans compared in §2 are produced by its DP over
+  left-deep trees; the unoptimized baseline is what that paper's system would do with no
+  enumeration at all.

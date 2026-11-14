@@ -1,6 +1,6 @@
 # REPORT_M2 — Execution engine measurements
 
-Machine: *fill in (CPU, RAM, OS)*. Language: Python *3.x.y*.
+Machines: the tables were produced on Linux (Intel Xeon 2.10 GHz, 2 cores, 7 GB RAM, Python 3.13.18) and the tools were rerun on my Windows PC (8 logical processors, Python 3.13.14). Page counts and comparisons are deterministic and identical on both; only wall-clock seconds differ.
 All numbers come from `python tools/m2_measure.py --out results_m2`, which builds its
 own relations (tuples of 4 + 4 + 152 bytes, about 25 per page, keys uniform unless
 stated), runs each plan through `execution.engine.execute` on a cold buffer pool of
@@ -200,3 +200,12 @@ pinned + reserved can never exceed B; `BufferPool.peak_held` records the maximum
 pinned + reserved after every fetch and reservation. The test
 `tests/test_m2.py::SortTests::test_sort_20_times_B_at_B4` asserts the same, and every
 test also checks that nothing is pinned or reserved and no temp file remains after close.
+
+## Sources
+
+- **Shapiro, TODS 1986** (DESIGN_M2.md §9): hybrid hashing, building in memory when the
+  build side fits, is why hash join drops below 3(M + N) at large B in §1, and his
+  "partitions must fit in memory" condition is the B ≳ √M explanation of B = 4.
+- **Ramakrishnan and Gehrke, ch. 13–14** (external sorting, joins): the cost formulas
+  in the tables are theirs and the spec's; their observation that block nested loop wins
+  once the outer fits in a few blocks is the crossover in §3a.

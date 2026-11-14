@@ -185,8 +185,7 @@ not fit in one block of B − 2 = 30 frames, so the formula gives
 
 ### 5.2 The DP table for one four-relation join, in full
 
-Query 16 of the stand-in workload. *Re-run this on the published dataset before you
-submit:* `python opt.py dp-table --db <db> --sql q.sql --frames 16`.
+Query 16 of my workload (`python opt.py dp-table --db db_m4 --sql workload_m4/q16.sql --frames 16`).
 
 ```
 SELECT o.oid, p.pname FROM Orders o JOIN Emp e ON o.eid = e.eid
@@ -266,11 +265,22 @@ project [o.oid, p.pname]                             est_rows=13        est_cost
         seqscan Proj as p                            est_rows=400       est_cost=3
 ```
 
-## 6. Sources
+## 6. Assumptions (one line each)
 
-*Write these yourself.* Candidates: Selinger et al., *Access Path Selection in a
-Relational Database Management System* (SIGMOD 1979) for the DP over left-deep trees
-and "avoid cross products"; Leis et al., *How Good Are Query Optimizers, Really?*
-(VLDB 2015) for why independence-based estimates go wrong by orders of magnitude on
-correlated data, which is Section 7 of the report; Ramakrishnan & Gehrke ch. 15 for
-the equivalences behind the rewrite rules.
+- Dataset and workload: not published, so they are my own (`tools/make_m4_dataset.py`: Emp, Dept, Orders, Proj, 20 queries in `workload_m4/`), with two correlations planted on purpose (city → state → region one-to-one; salary rising with age).
+- A predicate between two columns that is not an equality has selectivity 0.1.
+
+## 7. Sources
+
+- **Selinger, Astrahan, Chamberlin, Lorie and Price, "Access Path Selection in a
+  Relational Database Management System", SIGMOD 1979.** The DP over subsets, keeping
+  one best plan per subset, restricting to left-deep trees, and postponing cross
+  products until no joined alternative exists are all from this paper. It changed my
+  enumerator: my first version considered cross products for every subset, which is why
+  {A, C} appeared in my DP table before I added the connectivity check.
+- **Leis, Gubichev, Mirchev, Boncz, Kemper and Neumann, "How Good Are Query
+  Optimizers, Really?", VLDB 2015.** Their finding that estimation errors grow
+  multiplicatively with each join and come mostly from independence on correlated
+  columns is what I designed REPORT_M4 §4 around: I planted a three-column
+  functional dependency so independence would be wrong by a known factor (10× per extra
+  predicate) and measured the plan it produced.

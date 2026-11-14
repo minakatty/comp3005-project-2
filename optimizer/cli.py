@@ -56,10 +56,10 @@ def dp_table_lines(log):
     for S, rows in log:
         name = "{" + ",".join(S) + "}"
         if rows is None:
-            lines.append(f"{name:<22} {'—':>10}  no predicate inside this subset, skipped")
+            lines.append(f"{name:<22} {'-':>10}  no predicate inside this subset, skipped")
             continue
         if not rows:
-            lines.append(f"{name:<22} {'—':>10}  no plan")
+            lines.append(f"{name:<22} {'-':>10}  no plan")
             continue
         for cost, desc, best in sorted(rows, key=lambda r: (not r[2], r[0])):
             lines.append(f"{name if best else '':<22} {int(round(cost)):>10}  {'* ' if best else '  '}{desc}")

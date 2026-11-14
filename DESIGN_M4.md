@@ -1,4 +1,4 @@
-# DESIGN_M4 — Query optimizer
+# DESIGN_M4: Query optimizer
 
 Code: `optimizer/`. `stats.py` (ANALYZE), `estimate.py` (selectivity and
 cardinality), `logical.py` (columns, estimates and the rewrite rules), `physical.py`
@@ -205,15 +205,15 @@ subset                       cost  plan considered
                               301    sort_merge_join outer=o (1p) inner=e
                               310    hash_join outer=e (8p) inner=o
                               310    hash_join outer=o (1p) inner=e
-{o,d}                           —  no predicate inside this subset, skipped
-{o,p}                           —  no predicate inside this subset, skipped
+{o,d}                          -  no predicate inside this subset, skipped
+{o,p}                          -  no predicate inside this subset, skipped
 {e,d}                         126  * nested_loop_join outer=d (1p) inner=e
                               126    nested_loop_join outer=e (8p) inner=d
                               135    sort_merge_join outer=d (1p) inner=e
                               135    sort_merge_join outer=e (8p) inner=d
                               144    hash_join outer=d (1p) inner=e
                               144    hash_join outer=e (8p) inner=d
-{e,p}                           —  no predicate inside this subset, skipped
+{e,p}                          -  no predicate inside this subset, skipped
 {d,p}                           4  * nested_loop_join outer=p (1p) inner=d
                                 4    nested_loop_join outer=d (1p) inner=p
                                 6    sort_merge_join outer=p (1p) inner=d
@@ -226,8 +226,8 @@ subset                       cost  plan considered
                               305    nested_loop_join outer={d,e} (12p) inner=o
                               318    sort_merge_join outer={d,e} (12p) inner=o
                               331    hash_join outer={d,e} (12p) inner=o
-{o,e,p}                         —  no predicate inside this subset, skipped
-{o,d,p}                         —  no predicate inside this subset, skipped
+{o,e,p}                        -  no predicate inside this subset, skipped
+{o,d,p}                        -  no predicate inside this subset, skipped
 {e,d,p}                       130  * nested_loop_join outer={p,d} (1p) inner=e
                               139    sort_merge_join outer={p,d} (1p) inner=e
                               141    nested_loop_join outer={d,e} (12p) inner=p

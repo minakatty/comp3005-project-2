@@ -1,4 +1,4 @@
-# REPORT_M2 — Execution engine measurements
+# REPORT_M2: Execution engine measurements
 
 Machines: the tables were produced on Linux (Intel Xeon 2.10 GHz, 2 cores, 7 GB RAM, Python 3.13.18) and the tools were rerun on my Windows PC (8 logical processors, Python 3.13.14). Page counts and comparisons are deterministic and identical on both; only wall-clock seconds differ.
 All numbers come from `python tools/m2_measure.py --out results_m2`, which builds its
@@ -186,7 +186,7 @@ hot key hashes to the same partition at every depth.
 
 Cost against the uniform case: writes are the same (130 against 131: partitioning cost
 does not depend on skew), reads rise from 259 to 337 (the re-reads of R₄), and
-comparisons jump from 4 393 to 561 547 — but the output itself grew from 2 263 to
+comparisons jump from 4 393 to 561 547, but the output itself grew from 2 263 to
 358 257 rows, since 600 × 600 tuples share key 7. Most of the extra work is producing
 a genuinely larger result; the overflow's own overhead is the 78 extra page reads.
 

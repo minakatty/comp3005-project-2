@@ -95,7 +95,7 @@ operand      ::= column | INT | STRING | aggregate      (* aggregate: HAVING onl
 
 | Level | Operators | Associativity | Enforcing rule |
 |---|---|---|---|
-| 1 (tightest) | a `select_block`, `( query )` | — | `select_block` |
+| 1 (tightest) | a `select_block`, `( query )` | - | `select_block` |
 | 2 | `UNION`, `UNION ALL`, `INTERSECT`, `EXCEPT` | left | `query` |
 
 All set operators share one level, as the spec requires, so
@@ -107,7 +107,7 @@ Parentheses override: `A UNION (B EXCEPT C)` (`test_parenthesised_set_operation`
 
 | Level | Operator | Associativity | Enforcing rule |
 |---|---|---|---|
-| 1 (tightest) | comparison, `( )` | — | `cond_primary` |
+| 1 (tightest) | comparison, `( )` | - | `cond_primary` |
 | 2 | `NOT` | right (prefix) | `not_cond` |
 | 3 | `AND` | left | `and_cond` |
 | 4 (loosest) | `OR` | left | `or_cond` |

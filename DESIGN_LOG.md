@@ -1,4 +1,4 @@
-# DESIGN_LOG — Project 2
+# DESIGN_LOG: Project 2
 
 One entry per working session. AI assistance was used throughout, as the handout allows;
 the "AI was wrong" items name the test or measurement that exposed each mistake.
@@ -19,7 +19,7 @@ the "AI was wrong" items name the test or measurement that exposed each mistake.
 - **Tokenizer.** Added `<>` as a second spelling of not-equal, so condition strings
   written by Module 3 parse with the Bonus 1 parser unchanged.
 
-## 2026-11-11 — First Module 1 kit and the measurement script
+## 2026-11-11: First Module 1 kit and the measurement script
 
 - **Trying to:** get the M1 measurement script running before the traces arrived.
 - **AI was wrong (1): the measurement script crashed with `invalid literal for int(): 'Put'`.**
@@ -28,7 +28,7 @@ the "AI was wrong" items name the test or measurement that exposed each mistake.
   Found the first time I ran it; deleted the placeholder. The current script skips any
   file that is not a list of page ids, with a note.
 
-## 2026-11-12 — Module 1 rebuilt to the spec
+## 2026-11-12: Module 1 rebuilt to the spec
 
 - **Trying to:** storage engine exactly to M1 spec: slotted pages, directory heap
   file, LRU and CLOCK, catalog in pages, CLI with the required JSON shapes.
@@ -43,7 +43,7 @@ the "AI was wrong" items name the test or measurement that exposed each mistake.
   record behind and the catalog grew without bound, which I noticed in the
   catalog page dump (`slot 0 (0,0) dead`).
 
-## 2026-11-12 — Module 2: memory budget and the operators
+## 2026-11-12: Module 2: memory budget and the operators
 
 - **Trying to:** every operator under one budget of B frames.
 - **Decision:** enforce the budget by construction: tuples an operator keeps live in
@@ -70,7 +70,7 @@ the "AI was wrong" items name the test or measurement that exposed each mistake.
   (three scans and two nested-loop blocks). Changed the allocation rule: when the
   share is 0, nested loop joins run tuple-at-a-time.
 
-## 2026-11-12 — Module 3: SQL front end
+## 2026-11-12: Module 3: SQL front end
 
 - **Trying to:** the seven translation examples exactly, node for node.
 - **Decision:** bare table aliases (`FROM Emp e`) even though the grammar sketch
@@ -81,7 +81,7 @@ the "AI was wrong" items name the test or measurement that exposed each mistake.
   column is in the select list; `SELECT DISTINCT COUNT(*) ... GROUP BY d` keeps it,
   because two groups can have the same count (DESIGN_M3.md §1).
 
-## 2026-11-12 — Module 4: optimizer
+## 2026-11-12: Module 4: optimizer
 
 - **AI was wrong (5): rule 5 never fired through a subquery.** For
   `... FROM (SELECT did, COUNT(*) AS n ... GROUP BY did) AS t WHERE t.did = 3 AND t.n > 2`
@@ -99,7 +99,7 @@ the "AI was wrong" items name the test or measurement that exposed each mistake.
   so small that nested loop always wins); the test now uses a self join of Emp, where
   hash join wins at B = 4 and nested loop at B = 32.
 
-## 2026-11-13 — Running everything on Windows, and the missing course files
+## 2026-11-13: Running everything on Windows, and the missing course files
 
 - **Trying to:** run the whole walkthrough in PowerShell on my own machine.
 - **Broke:** I was still in the old project folder (130 tests, old `storage/schema.py`),

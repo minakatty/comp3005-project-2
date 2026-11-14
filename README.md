@@ -1,113 +1,189 @@
 Amina Katawazi
 101308840
 
-# Project 2: a database system, one module at a time
+# COMP 3005 Project 2 - a small database system
 
-Text goes in as SQL, a plan comes out, and tuples are read from pages on disk
-through a buffer pool. Four modules, each runnable on its own, joined by JSON
-contracts, built on top of the Bonus Project 1 relational algebra engine.
+This is my Project 2: a working DBMS built on top of my Bonus Project 1
+relational algebra engine. You type SQL, it gets parsed into a plan, the optimizer picks
+how to run it, and the executor reads tuples off 4 KB pages on disk through a buffer pool
+I wrote. It's all plain Python. The only library it uses is `json` (plus matplotlib but only for the plots in the reports; you don't need it to run anything).
 
-```
-  SQL text
-     |
-  [ M3 sqlfront ]   lexer -> parser -> name resolution / types -> translation
-     |  logical plan JSON
-  [ M4 optimizer ]  rewrites -> statistics -> cost model -> join order -> algorithm
-     |  physical plan JSON
-  [ M2 execution ]  iterator tree, open / next / close, memory budget B
-     |  page requests
-  [ M1 storage ]    buffer pool -> heap files -> pages on disk
-```
-
-Python 3.10 or later. No third-party packages are needed to run anything
-(matplotlib is used only by the report scripts, for plots, if it is installed).
-
-## The command line tools
-
-Each module has the command the spec names. On Windows use `python`, elsewhere
-`python3` if that is your interpreter's name.
+## How it fits together
 
 ```
-# Module 1: storage
-python -m storage create-table --db db --name R --schema "a:INT,b:VARCHAR(20),c:INT"
-python -m storage load         --db db --table R --file r.csv
-python -m storage scan         --db db --table R --frames 8 --limit 20 --json
-python -m storage layout       --db db --table R --page 1 [--hex]
-python -m storage trace        --file trace.txt --frames 16 --policy lru --json
-python -m storage page-demo                     # spec 3.2 worked example, step by step
-
-# Module 2: execution        (exec.py is the same as python -m execution)
-python exec.py run   --db db --plan plan.json --frames 32 --json
-python exec.py trace --db db --plan plan.json --frames 32
-
-# Module 3: SQL              (sql.py is the same as python -m sqlfront)
-python sql.py parse   --query "SELECT a FROM R WHERE b > 3" --explain
-python sql.py compile --db db --file q.sql --json
-python sql.py check   --db db --file q.sql
-
-# Module 4: optimizer        (opt.py is the same as python -m optimizer)
-python opt.py analyze  --db db --table R --buckets 20
-python opt.py plan     --db db --logical q.json --frames 32 --json
-python opt.py explain  --db db --logical q.json --frames 32 [--rewrites]
-python opt.py dp-table --db db --logical q.json --frames 32
-#   --sql q.sql may replace --logical (compiled by M3 first); --disable 2,6 turns rules off;
-#   --naive prints the unoptimized plan used as the baseline in REPORT_M4.md
-
-# Integration: one prompt, SQL in, rows out
-python dbms.py --db db --frames 32
-python dbms.py --db db --file script.sql
-#   also: EXPLAIN q; EXPLAIN ANALYZE q; ANALYZE t; SET frames = n; LOAD t FROM file;
-
-# Bonus Project 1, unchanged interface
-python ra.py --tree "project[Name](select[Age>30](Employees))"
+ SQL text
+    |
+  M3  sqlfront/    hand-written lexer + parser, name resolution, type checks  -> logical plan (JSON)
+    |
+  M4  optimizer/   statistics, estimates, rewrite rules, join order + algorithm -> physical plan (JSON)
+    |
+  M2  execution/   iterator operators (open/next/close) inside a memory budget of B frames
+    |
+  M1  storage/     buffer pool (LRU / CLOCK) -> heap files -> slotted pages on disk
 ```
 
-## Tests
+Each module also runs on its own with its own command (that's how each checkpoint gets
+graded), and `dbms.py` wires all four together into one prompt.
+
+`ralang/` is my Bonus 1 engine turned into a library. Its condition parser (things like
+`R.a > 5 and R.b = 'x'`) gets reused by M2, M3 and M4, so every condition in every plan
+is written in the same little language.
+
+## Setup
+
+You just need Python 3.10 or newer (I used 3.13). Nothing to install.
 
 ```
+cd C:\dev\project2
 python -m unittest discover -s tests
 ```
 
-| file | what it covers |
+You should see `Ran 210 tests ... OK`. It takes about 2 minutes; the M4 tests are the slow ones.
+
+## Quick demo (start here)
+
+Make two small tables and load them:
+
+```
+Set-Content emp.csv "1,amy,30,10","2,bob,41,20","3,cat,52,10","4,dan,25,30"
+Set-Content dept.csv "10,Sales","20,IT","30,HR"
+python -m storage create-table --db mydb --name Emp --schema "eid:INT,name:VARCHAR(10),age:INT,did:INT"
+python -m storage create-table --db mydb --name Dept --schema "did:INT,title:VARCHAR(10)"
+python -m storage load --db mydb --table Emp --file emp.csv
+python -m storage load --db mydb --table Dept --file dept.csv
+```
+
+Then open the shell and type SQL (`dbms>` is the prompt, you don't type it):
+
+```
+python dbms.py --db mydb
+dbms> SELECT e.name, d.title FROM Emp e JOIN Dept d ON e.did = d.did WHERE e.age > 28;
+dbms> EXPLAIN ANALYZE SELECT name FROM Emp WHERE age > 28;
+dbms> SET frames = 4;
+dbms> \q
+```
+
+The shell also understands `ANALYZE Emp;`, `LOAD Emp FROM emp.csv;`, `CREATE TABLE` and
+`INSERT INTO`. Statements end with `;`.
+
+## Running each module on its own
+
+### M1: storage
+```
+python -m storage scan   --db mydb --table Emp --frames 4 --json
+python -m storage layout --db mydb --table Emp --page 1 --hex     # the page, slot by slot, byte by byte
+python -m storage trace  --file traces/trace1.txt --frames 3 --policy lru --json
+python -m storage page-demo                                        # reproduces the spec's 3.2 table
+```
+`traces/trace1.txt` is the spec's 5.3 example (1 2 3 1 4 2). With 3 frames LRU gives
+1 hit / 5 misses / 2 evictions and CLOCK gives 2 / 4 / 1, same as the spec.
+
+### M3: SQL front end (`sql.py` is short for `python -m sqlfront`)
+```
+Set-Content q.sql "SELECT e.name, d.title FROM Emp e JOIN Dept d ON e.did = d.did WHERE e.age > 28;"
+python sql.py parse   --query "SELECT name FROM Emp WHERE age > 3" --explain   # syntax tree, no catalog
+python sql.py compile --db mydb --file q.sql                                   # logical plan as a tree
+python sql.py compile --db mydb --file q.sql --json > q.json                   # logical plan as JSON
+python sql.py check   --db mydb --file q.sql                                   # only errors, exit 0 or 1
+```
+
+### M4: optimizer (`opt.py` is short for `python -m optimizer`)
+```
+python opt.py analyze  --db mydb --table Emp
+python opt.py explain  --db mydb --logical q.json --frames 8 --rewrites   # before/after rewrites + chosen plan
+python opt.py dp-table --db mydb --logical q.json --frames 8              # the join-order DP table
+python opt.py plan     --db mydb --logical q.json --frames 8 --json > plan.json
+```
+Extras: `--sql q.sql` works instead of `--logical`, `--disable 2,6` turns rewrite rules
+off, and `--naive` prints the "no optimizer" plan I compare against in REPORT_M4.
+
+### M2: execution (`exec.py` is short for `python -m execution`)
+```
+python exec.py run   --db mydb --plan plan.json --frames 8 --json
+python exec.py trace --db mydb --plan plan.json --frames 8            # counters for every operator
+```
+There's a sample plan for every operator in `samples/plans/`, written from the JSON in M2
+Section 2. To try them:
+```
+python samples/make_sample_db.py samples_db
+python exec.py run --db samples_db --plan samples/plans/11_hash_join.json --frames 4
+```
+Plans 20–22 are broken on purpose, to show the error messages (missing field, unknown
+operator, unknown column).
+
+## Where the report numbers come from
+
+Every table in the REPORT files is produced by a script in `tools/`; nothing is typed in
+by hand. Page counts are deterministic, so reruns give the same numbers (only the seconds
+change).
+
+```
+python tools/make_traces.py traces
+python tools/m1_measure.py --traces traces --out results_m1
+python tools/m2_measure.py --out results_m2                                  # ~10 min
+python tools/make_m4_dataset.py --db db_m4 --workload workload_m4
+python tools/m4_measure.py --db db_m4 --workload workload_m4 --frames 4 --analyze --out results_m4   # ~30 min
+```
+
+For the integration demo (the 25 hidden queries), this runs every query through the
+whole system and writes the table the handout asks for: rows, page I/O, wall time, and
+estimated vs actual rows at the root:
+
+```
+python tools/run_workload.py --db db --queries hidden_queries --frames 32 --out results_final.md
+```
+
+About the data: the prof said the course traces, sample plans and dataset won't be
+posted and to write our own, so `traces/`, `samples/` and `workload_m4/` are mine. Every
+assumption that comes from that is one line in the "Assumptions" section of the matching
+DESIGN file.
+
+## What's in the repo
+
+| File / folder | What it is |
 |---|---|
-| `tests/test_tokenizer.py`, `test_parser.py`, `test_operators.py` | the 25 Bonus 1 cases (still passing; case 23 now needs an explicit `distinct`) |
-| `tests/test_week1.py` | the week-one refactor: JSON round trip, condition parser alone, providers, bags |
-| `tests/test_m1.py` | spec 3.2 and 5.3 worked examples, every Section 9 error, the Section 10 checklist |
-| `tests/test_m2.py` | the Section 6 checklist, plan validation messages, skew, empty inputs |
-| `tests/test_m3.py` | the 15 required cases and the 7 translation examples, compared structurally |
-| `tests/test_m4.py` | the selectivity, rewrite and DP worked examples, the Section 8 checklist |
+| `DESIGN_M1.md` – `DESIGN_M4.md` | how each module works, my decisions, assumptions, sources |
+| `REPORT_M1.md`, `REPORT_M2.md`, `REPORT_M4.md` | the required measurements and what they mean |
+| `GRAMMAR.md` | Bonus 1 grammar |
+| `GRAMMAR_SQL.md` | the SQL grammar for M3, with precedence tables |
+| `ARCHITECTURE.md` | the whole system, the interfaces between modules, what I'd change |
+| `DESIGN_LOG.md` | dated diary, including six times the AI got something wrong |
+| `tests/` | all the tests; the 25 Bonus 1 cases still pass |
+| `results_m1/`, `results_m2/`, `results_m4/` | raw output of the measurement scripts |
 
-## Project layout
+One Bonus 1 test changed meaning: case 23 (`project[DID](Employees)`) now needs an explicit
+`distinct(...)`, because projection keeps duplicates now (SQL works on bags, not sets).
 
-```
-ralang/        Bonus 1 engine as a library: tokenizer, parser, AST, operators,
-               condition.py (the reusable condition parser/evaluator), plan_json.py
-storage/       M1: record.py, page.py, disk.py, bufferpool.py, heap.py, catalog.py, db.py, cli.py
-execution/     M2: operators.py (every iterator), memory.py (budget, temp files, external sort),
-               plan.py (validation, construction, frame allocation), engine.py, cli.py
-sqlfront/      M3: lexer.py, parser.py, sqlast.py, translate.py (scope, types, translation), cli.py
-optimizer/     M4: stats.py (ANALYZE), estimate.py (selectivity), logical.py (rewrite rules),
-               physical.py (cost model, DP, physical plans), optimize.py, cli.py
-dbms/          the integrated shell
-tools/         measurement scripts for every REPORT_M*.md, data and trace generators
-tests/         all of the above
-```
+## What works
 
-Measurement output: `results_m1/`, `results_m2/`, `results_m4/` (from the scripts in
-`tools/`); `traces/` (my five buffer-pool traces), `samples/` (sample plans for every
-operator, sample SQL, `make_sample_db.py`), `workload_m4/` (the 20 optimizer queries).
-The course does not publish its traces, plans or dataset; every assumption that follows
-from that is one line in the "Assumptions" section of the DESIGN_M*.md it affects. **`TODO_BEFORE_SUBMIT.md` lists what still needs you.**
-
-Documents: `GRAMMAR.md` (Bonus 1), `DESIGN_M1.md` … `DESIGN_M4.md`, `REPORT_M1.md` …
-`REPORT_M4.md`, `GRAMMAR_SQL.md`, `ARCHITECTURE.md`, `DESIGN_LOG.md`.
+- INT and VARCHAR(n ≤ 255) columns, no NULLs (as the spec says)
+- slotted pages exactly to the spec's byte layout; a page is compacted only when an insert needs the space
+- LRU and CLOCK; evicting a pinned page is an error, never a silent choice
+- external merge sort, block nested loop, sort-merge join and Grace hash join (with partition overflow handling)
+- distinct and group by in both sort and hash versions; COUNT, SUM, AVG, MIN, MAX
+- union, union all, intersect, except (plus bag versions)
+- SQL: joins with aliases, comma joins, self joins, subqueries in FROM, GROUP BY / HAVING,
+  ORDER BY (even on columns not selected), LIMIT, CREATE TABLE, INSERT
+- optimizer: ANALYZE with equi-depth histograms, 7 rewrite rules, a page-I/O cost model,
+  and dynamic programming over left-deep join orders
+- a plan never holds more than B frames at once (checked in the tests)
 
 ## Known limitations
 
-- Only INT and VARCHAR(n ≤ 255) columns, no NULLs, as the handout requires.
-- Statistics are exact (ANALYZE scans and sorts every column); there is no sampling.
-- The optimizer enumerates left-deep trees only, and joins blocks of up to about ten
-  relations (2^n subsets); the spec asks for six.
-- The integrated shell reopens the buffer pool for every query so its page counts
-  are reproducible; there is no cache shared between statements.
-- There are no indexes, transactions, concurrency or recovery: out of scope.
+- The sort uses B−1 frames for runs instead of B (one frame holds the page being read in),
+  so at very small B it can take a pass or two more than the spec's formula. Explained in DESIGN_M2.
+- The optimizer only builds left-deep trees and gets slow past about 10 tables in one join.
+- Estimates assume columns are independent, so correlated columns fool it. That's on
+  purpose for REPORT_M4 Section 4.
+- The estimator ignores LIMIT, so a sort under a LIMIT shows a big q-error.
+- No indexes, transactions or concurrency (out of scope for the project).
+- The shell opens a fresh buffer pool for each query so I/O numbers are repeatable, which
+  means nothing is cached between queries.
+
+## Troubleshooting
+
+- "can't open file ... sql.py": you're not in the project folder. Run `cd C:\dev\project2` first.
+- SQL typed straight into PowerShell gives red errors: SQL only works inside
+  `python dbms.py` (after the `dbms>` prompt shows up), or saved in a `.sql` file.
+- Files saved with `>` in PowerShell: PowerShell saves them as UTF-16. The tools read
+  that fine now (this broke things before I fixed it).

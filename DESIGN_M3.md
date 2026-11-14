@@ -1,4 +1,4 @@
-# DESIGN_M3 — SQL front end
+# DESIGN_M3: SQL front end
 
 Code: `sqlfront/`. `lexer.py` and `parser.py` (hand-written, no regular
 expressions), `sqlast.py` (the syntax tree and `--explain` printer), `translate.py`

@@ -1,4 +1,4 @@
-# REPORT_M1 — Storage engine measurements
+# REPORT_M1: Storage engine measurements
 
 Machines: the tables were produced on Linux (Intel Xeon 2.10 GHz, 2 cores, 7 GB RAM, Python 3.13.18) and reproduced on my Windows PC (8 logical processors, Python 3.13.14). Page counts, hit counts and comparisons are deterministic and identical on both; only wall-clock seconds differ.
 

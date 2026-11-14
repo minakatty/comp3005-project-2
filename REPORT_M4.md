@@ -1,4 +1,4 @@
-# REPORT_M4 — Optimizer measurements
+# REPORT_M4: Optimizer measurements
 
 **Assumption:** the course dataset and twenty-query workload are not published, so both
 are my own: `python tools/make_m4_dataset.py --db db_m4 --workload workload_m4` builds Emp

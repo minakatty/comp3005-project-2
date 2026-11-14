@@ -1,4 +1,4 @@
-# DESIGN_M2 — Execution engine
+# DESIGN_M2: Execution engine
 
 Code: `execution/`. `operators.py` holds every iterator, `memory.py` the budget,
 temporary files and the external sort, `plan.py` the plan schema, construction and
@@ -141,7 +141,7 @@ Page accounting when partitioning: reads M + N (scans) + Σ|L_i| + Σ|R_i|, writ
 Σ|L_i| + Σ|R_i|; Σ|L_i| is slightly more than M because each partition's last page
 is partly full. `test_hash_join_partitions_or_stays_in_memory` checks both cases.
 
-**Partition overflow (*decision*).** If some L_i is still larger than the table's
+**Partition overflow (my decision).** If some L_i is still larger than the table's
 frames, that pair falls back to block nested loop: blocks of L_i the size of the
 table, R_i re-read once per block. I chose this over recursive repartitioning
 because it always terminates even when one key value fills the partition (repartitioning
@@ -203,7 +203,7 @@ valid as written.
 
 ## 9. Sources
 
-- **Graefe, "Volcano — An Extensible and Parallel Query Evaluation System", IEEE TKDE
+- **Graefe, "Volcano, An Extensible and Parallel Query Evaluation System", IEEE TKDE
   1994.** The open / next / close protocol and the rule that only blocking operators
   (sort, hash build) materialise come from here. It changed where my blocking work
   happens: sort runs pass 0 and every merge except the last inside `open`, and streams

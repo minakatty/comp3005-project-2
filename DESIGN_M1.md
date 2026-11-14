@@ -1,7 +1,7 @@
-# DESIGN_M1 — Storage engine and buffer pool
+# DESIGN_M1: Storage engine and buffer pool
 
 Code: `storage/`. Every byte offset below is the one the M1 spec requires; the
-sections marked *decision* are the places the spec left to me.
+sections marked "my decision" are the places the spec left to me.
 
 ## 1. Files and addressing
 
@@ -111,7 +111,7 @@ names the table and the row (`HeapFile.insert_bytes`). With VARCHAR capped at 25
 schema would need more than fifteen VARCHAR(255) columns to reach it, so
 `create_table` rejects such a schema up front.
 
-## 4. Free space strategy and compaction (*decision*)
+## 4. Free space strategy and compaction (my decision)
 
 **Free space directory.** The heap file is the spec's linked list of directory pages
 (page 0 first, 681 entries of `(data_page_id uint32, free_bytes uint16)` each, then
@@ -193,7 +193,7 @@ reserved frame is never a victim. Because pinned pages and reserved frames come
 from the same B frames, a query plan can never hold more than B pages, and
 `peak_held` records the maximum it did. DESIGN_M2.md builds on this.
 
-## 6. Catalog page format (*decision*)
+## 6. Catalog page format (my decision)
 
 `catalog.db` is an ordinary heap file (directory page 0, slotted data pages), read
 and written through the buffer pool. Its records have a fixed schema:

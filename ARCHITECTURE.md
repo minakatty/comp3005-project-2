@@ -54,7 +54,7 @@ Two properties of these contracts made the modules independent:
    across a module boundary except through JSON.
 2. **Every plan node carries enough to resolve names without the producer.** Columns
    are qualified (`e.name`) and renames are explicit, so M2 can check a plan from any
-   source (mine, the professor's sample plans) before reading a page.
+   source (the optimizer's, or a hand-written one like `samples/plans/`) before reading a page.
 
 ## What I would do differently if I started again
 

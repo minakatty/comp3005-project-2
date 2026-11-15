@@ -207,17 +207,9 @@ Strategy: hand-written recursive descent, one function per non terminal.
 
 The grammar above is LL(1) after stratification so at every decision point one token of lookahead is enough to pick an alternative. Recursive descent then maps mechanically onto it: `UnionExpr` becomes `parse_union_expr()`, `AndCond` becomes `parse_and_cond()`, and so on ... 3 things follow from that
 
-1\. The call stack is the parse tree, so the code is checkable against this document line
-
-   by line
-
-2\. Error positions are free, the current token carries its offset, so a failure reports
-
-   where it happened rather than throwing (section 6.3 of the spec)
-
-3\. precedence lives in the shape of the grammar, so adding an operator level means adding
-
-   one function, not patching conditionals inside another existing one
+1. The call stack is the parse tree, so the code is checkable against this document line by line
+2. Error positions are free, the current token carries its offset, so a failure reports where it happened rather than throwing (section 6.3 of the spec)
+3. precedence lives in the shape of the grammar, so adding an operator level means adding one function, not patching conditionals inside another existing one
 
 ### 4.2 What left recursion does to it
 
@@ -231,7 +223,7 @@ rewritten:        UnionExpr ::= IntersectExpr { ( "union" | "minus" ) IntersectE
 ```
 The `{ ... }` is a loop, not a recursive call, so the function parses one operand, then iterates while it sees a matching operator, folding left as it goes. Same language but  identical left associative trees, terminates
 
-`UnionExpr`, `IntersectExpr`, `ProductExpr`, `OrCond` and `AndCond` all use this form. 'NotCond` is the one deliberately right-recursive rule, prefix operators recurse on the right, which is safe, because the token `not` is consumed before the recursive call
+`UnionExpr`, `IntersectExpr`, `ProductExpr`, `OrCond` and `AndCond` all use this form. `NotCond` is the one deliberately right-recursive rule, prefix operators recurse on the right, which is safe, because the token `not` is consumed before the recursive call
 
 ---
 
@@ -301,5 +293,5 @@ Rust Reference, "Keywords" §Weak Keywords (https://doc.rust-lang.org/reference/
 
 Wikipedia, "LL grammar" (https://en.wikipedia.org/wiki/LL_grammar) — this is the formal name for the property my grammar actually has: at every point the parser needs to decide something, one token of lookahead is enough. That's the real reason recursive descent works cleanly here instead of just seeming to work
 
-Where AI was wrong: The full details are in DESIGN_LOG.md. In short, there were a few mistakes in the AI generated code. The first version of _infer_types in catalog.py mixed up two different checks and only worked by accident. The first version of join also stored the whole cross product in memory before filtering it, which caused a MemoryError when both relations had 32,000 tuples. The estimated time for the full performance test was also wrong. It was expected to take about an hour, but it actually took around 139 minutes.
+Where AI was wrong: The full details are in my Bonus 1 DESIGN_LOG.md (the Project 2 DESIGN_LOG.md has the Project 2 ones). In short, there were a few mistakes in the AI generated code. The first version of _infer_types in catalog.py mixed up two different checks and only worked by accident. The first version of join also stored the whole cross product in memory before filtering it, which caused a MemoryError when both relations had 32,000 tuples. The estimated time for the full performance test was also wrong. It was expected to take about an hour, but it actually took around 139 minutes.
 

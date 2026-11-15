@@ -6,7 +6,7 @@ Amina Katawazi
 This is my Project 2: a working DBMS built on top of my Bonus Project 1
 relational algebra engine. You type SQL, it gets parsed into a plan, the optimizer picks
 how to run it, and the executor reads tuples off 4 KB pages on disk through a buffer pool
-I wrote. It's all plain Python. The only library it uses is `json` (plus matplotlib but only for the plots in the reports; you don't need it to run anything).
+I wrote. It's all plain Python, standard library only (`json`, `csv`, `struct` and so on). matplotlib is used only to draw the plots in the reports, so you don't need it to run anything.
 
 ## How it fits together
 
@@ -147,8 +147,11 @@ DESIGN file.
 | `GRAMMAR.md` | Bonus 1 grammar |
 | `GRAMMAR_SQL.md` | the SQL grammar for M3, with precedence tables |
 | `ARCHITECTURE.md` | the whole system, the interfaces between modules, what I'd change |
-| `DESIGN_LOG.md` | dated diary, including six times the AI got something wrong |
+| `DESIGN_LOG.md` | dated diary, including seven times the AI got something wrong |
 | `tests/` | all the tests; the 25 Bonus 1 cases still pass |
+| `tools/` | the scripts that make the traces, the M4 dataset and every report table |
+| `samples/` | my sample plans (one per operator), sample SQL, and the script that builds their database |
+| `traces/`, `workload_m4/` | my buffer pool traces and my 20 M4 queries (the course ones weren't posted) |
 | `results_m1/`, `results_m2/`, `results_m4/` | raw output of the measurement scripts |
 
 One Bonus 1 test changed meaning: case 23 (`project[DID](Employees)`) now needs an explicit

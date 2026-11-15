@@ -153,7 +153,7 @@ each column's histogram; the AND rule multiplies them: 4 000 × (1/10)³ ≈ 4�
 
 **The actual.** 374 rows (10 %), because state and region are functions of city: a
 row with city c3 always has state s3 and region r3, so the second and third predicates
-remove nothing. After projection that is about 11 pages, not 1.
+remove nothing. After projection that is 10 pages, not 1.
 
 **The assumption that failed:** independence, `sel(p AND q) = sel(p) × sel(q)`
 (DESIGN_M4.md §2). It underestimated by 75×.

@@ -115,8 +115,9 @@ Pass 0 uses B frames for each run: the sort reserves B − 1, and the page the s
 reading is the B-th (DESIGN_M2.md §3), so there are ceil(N/B) runs. Merges are (B − 1)-way
 with one output frame.
 
-Reads and writes also follow the formula 2N(passes − 1) + N, plus the scan's directory
-page. The spec's worked example (N = 8, B = 3): 3 runs, pass 1 merges two and carries the
+Reads plus writes equal the formula 2N(passes − 1) + N (plus the scan's directory page)
+when every merge pass rewrites all N pages (N = 160, 64, 320), and come in under it when a
+run is carried forward (N = 8, 80, 100, 40). The spec's worked example (N = 8, B = 3): 3 runs, pass 1 merges two and carries the
 third, pass 2 streams the last two. Reads are 8 + 6 + 8 = 22 (23 here, with the directory
 page) and writes 8 + 6 = 14, exactly the spec's table. N = 80, B = 4: 20 runs, then 7,
 then 3, then the final streaming merge. That is 4 passes and 232 writes, not 3 × 80 = 240,

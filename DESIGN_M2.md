@@ -201,7 +201,7 @@ valid as written.
 
 ## 8. Assumptions (one line each)
 
-- Plan schema: the course's JSON schema and sample plans are not published (the professor's reply, 2026-11-13), so field names are exactly those of the JSON shown in M2 §2, with `limit` carrying its count in `n`; my own sample plans for every operator are in `samples/plans/` (run against `samples/make_sample_db.py`).
+- Plan schema: the course's JSON schema and sample plans are not published, so field names are exactly those of the JSON shown in M2 §2, with `limit` carrying its count in `n`; my own sample plans for every operator are in `samples/plans/` (run against `samples/make_sample_db.py`).
 - `distinct` without `mode` means sort; `group_by` without `mode` means hash.
 - A sort reading a table counts the scan's pinned input page as one of its B run frames (§2).
 - Hash join builds in memory, without partitioning, when the build side fits (hybrid hashing, Shapiro 1986); otherwise it is the spec's Grace join with P = B − 1.

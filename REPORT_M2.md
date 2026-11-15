@@ -1,6 +1,6 @@
 # REPORT_M2: Execution engine measurements
 
-Machines: the tables were produced on Linux (Intel Xeon 2.10 GHz, 2 cores, 7 GB RAM, Python 3.13.18). The test suite also passes on my Windows PC (8 logical processors, Python 3.13.14). Page counts and comparisons are deterministic, so they do not depend on the machine; wall-clock seconds do.
+Machine: my PC (Intel Core i7-1185G7 @ 3.00 GHz, 8 logical processors, 32 GB RAM, Windows, Python 3.13.14). Every table below was produced on it with the command below. Page counts and comparisons are deterministic, so they do not depend on the machine; wall-clock seconds do.
 
 All numbers come from `python tools/m2_measure.py --out results_m2`, which builds its
 own relations (tuples of 4 + 4 + 152 bytes, about 25 per page, keys uniform unless
@@ -183,9 +183,9 @@ few blocks favours nested loop.
 
 40% of the rows on both sides have key 7; the rest are uniform over 0..999. Hash join at B = 16.
 
-**uniform**: partitions (left pages) [5, 5, 5, 4, 5, 4, 5, 5, 4, 4, 5, 5, 5, 4, 5], (right pages) [4, 5, 4, 5, 5, 5, 5, 5, 5, 5, 4, 6, 4, 4, 5], overflowed partitions [], reads 269, writes 141, comparisons 4220, output 2263 rows, 0.03 s
+**uniform**: partitions (left pages) [5, 5, 5, 4, 5, 4, 5, 5, 4, 4, 5, 5, 5, 4, 5], (right pages) [4, 5, 4, 5, 5, 5, 5, 5, 5, 5, 4, 6, 4, 4, 5], overflowed partitions [], reads 269, writes 141, comparisons 4220, output 2263 rows, 0.12 s
 
-**skewed**: partitions (left pages) [3, 3, 3, 3, 3, 3, 4, 27, 3, 3, 4, 3, 3, 3, 3], (right pages) [3, 3, 3, 3, 3, 2, 3, 28, 4, 3, 3, 3, 2, 3, 3], overflowed partitions [7], reads 312, writes 140, comparisons 433191, output 358257 rows, 0.21 s
+**skewed**: partitions (left pages) [3, 3, 3, 3, 3, 3, 4, 27, 3, 3, 4, 3, 3, 3, 3], (right pages) [3, 3, 3, 3, 3, 2, 3, 28, 4, 3, 3, 3, 2, 3, 3], overflowed partitions [7], reads 312, writes 140, comparisons 433191, output 358257 rows, 0.47 s
 
 With 40 % of the keys equal to 7, h1 sends all of them to one partition. Partition 7
 holds 27 left pages and 28 right pages, about nine times its neighbours, and more than the

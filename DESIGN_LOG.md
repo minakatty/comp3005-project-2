@@ -1,8 +1,5 @@
 # DESIGN_LOG: Project 2
 
-One entry per working session. AI assistance was used throughout, as the handout allows;
-the "AI was wrong" items name the test or measurement that exposed each mistake.
-
 ## Week one: engine refactor (handout §1.3)
 
 - **What changed.** `ralang/` is now a library: tokenizer, parser, AST and operators
@@ -114,8 +111,7 @@ the "AI was wrong" items name the test or measurement that exposed each mistake.
   and a BOM-prefixed SQL file.
 - **Broke:** `git push` failed: the remote was the walkthrough's placeholder URL. Fixed with
   `git remote set-url origin` and pushed, with the `m1` tag.
-- **Decision (from the professor, reply to my question, 2026-11-13):** the course traces,
-  plan schema, sample plans and dataset will not be published; write our own and state the assumption in one line.
+- **Decision:** we were told the course traces, plan schema, sample plans and dataset won't be posted, so write our own and state each assumption in one line.
   Wrote `tools/make_traces.py` (five traces, trace1 is the §5.3 trace, trace3 the 80-page
   repeated scan, trace5 a hot set broken by scans), `samples/plans/` (one plan per
   operator in the spec's §2 JSON, plus three invalid ones), `samples/make_sample_db.py`

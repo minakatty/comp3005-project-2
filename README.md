@@ -6,7 +6,7 @@ Amina Katawazi
 This is my Project 2: a working DBMS built on top of my Bonus Project 1
 relational algebra engine. You type SQL, it gets parsed into a plan, the optimizer picks
 how to run it, and the executor reads tuples off 4 KB pages on disk through a buffer pool
-I wrote. It's all plain Python, standard library only (`json`, `csv`, `struct` and so on). matplotlib is used only to draw the plots in the reports, so you don't need it to run anything.
+I wrote. It's all plain Python, only the standard library (`json`, `csv`, `struct` and so on), plus matplotlib but only for the plots in the reports; you don't need it to run anything.
 
 ## How it fits together
 
@@ -38,7 +38,7 @@ cd C:\dev\project2
 python -m unittest discover -s tests
 ```
 
-You should see `Ran 211 tests ... OK`. It takes about 2-3 minutes; the M4 tests are the slow ones.
+You should see `Ran 211 tests ... OK`. It takes about 2 minutes; the M4 tests are the slow ones.
 
 ## Quick demo (start here)
 
@@ -120,7 +120,7 @@ change).
 ```
 python tools/make_traces.py traces
 python tools/m1_measure.py --traces traces --out results_m1
-python tools/m2_measure.py --out results_m2                                  # ~3 min
+python tools/m2_measure.py --out results_m2                                  # ~10 min
 python tools/make_m4_dataset.py --db db_m4 --workload workload_m4
 python tools/m4_measure.py --db db_m4 --workload workload_m4 --frames 4 --analyze --out results_m4   # ~30 min
 ```
@@ -133,10 +133,7 @@ estimated vs actual rows at the root:
 python tools/run_workload.py --db db --queries hidden_queries --frames 32 --out results_final.md
 ```
 
-About the data: when I asked, the prof replied (Nov 13) that the course traces, sample
-plans and dataset won't be posted and to write our own, so `traces/`, `samples/` and `workload_m4/` are mine. Every
-assumption that comes from that is one line in the "Assumptions" section of the matching
-DESIGN file.
+About data: it was said the course traces, sample plans and dataset won't be posted and to write our own, so `traces/`, `samples/` and `workload_m4/` are mine. Every assumption that comes from that is one line in the "Assumptions" section of the matching DESIGN file.
 
 ## What's in the repo
 

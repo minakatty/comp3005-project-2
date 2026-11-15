@@ -38,6 +38,9 @@ def parse_args(argv, flags=("json", "hex")):
                 raise StorageError(f"--{key} needs a value")
             opts[key] = argv[i + 1]
             i += 2
+    # the handout writes the database folder as --catalog db/ for sql and opt
+    if "catalog" in opts and "db" not in opts:
+        opts["db"] = opts.pop("catalog")
     return cmd, opts
 
 

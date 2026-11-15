@@ -109,7 +109,11 @@ class Planner:
             return PNode("filter", {"condition": node["condition"]}, [c], props(node, self.e), c.cost,
                          f"filter ({node['condition']})")
         if op == "project":
-            c = self.plan(node["child"])
+            ch = node["child"]
+            if ch["op"] in ("join", "cross") or (ch["op"] == "select" and _block_root(ch)):
+                c = self.join_block(ch, keep_order=False)   # this project sets the order
+            else:
+                c = self.plan(ch)
             f = {"columns": node["columns"]}
             if "as" in node:
                 f["as"] = node["as"]
@@ -124,7 +128,11 @@ class Planner:
                          c.cost + sort_cost(M, self.B) - M,
                          "sort [" + ", ".join(f"{k} {d}" for k, d in node["keys"]) + "]")
         if op in ("distinct", "group_by"):
-            c = self.plan(node["child"])
+            ch = node["child"]
+            if op == "group_by" and (ch["op"] in ("join", "cross") or (ch["op"] == "select" and _block_root(ch))):
+                c = self.join_block(ch, keep_order=False)   # group_by output is keys + aggregates
+            else:
+                c = self.plan(ch)
             M = c.est.pages
             sort_extra = sort_cost(M, self.B) - M
             hash_extra = 0 if M <= self.B - 1 else 2 * M
@@ -148,7 +156,7 @@ class Planner:
         raise OptError(f"cannot plan logical operator '{op}'")
 
     # -- join blocks ------------------------------------------------------------------
-    def join_block(self, node):
+    def join_block(self, node, keep_order=True):
         leaves, preds, top = [], [], []
         _flatten(node, leaves, preds, top)
         L = [self.plan(x) for x in leaves]
@@ -205,6 +213,14 @@ class Planner:
             rows = plan.est.rows * self.e.selectivity(parse_condition(cond), plan.est)
             e = Est(rows, plan.est.width, plan.est.cols, plan.est.lineage, plan.est.ndv)
             plan = PNode("filter", {"condition": cond}, [plan], e, plan.cost, f"filter ({cond})")
+        # a new join order also changes the column order; put back the order the
+        # logical plan had (SELECT * must list columns in FROM order)
+        want = [c[0] for c in props(node, self.e).cols]
+        if keep_order and [c[0] for c in plan.est.cols] != want:
+            e = props(node, self.e)
+            e = Est(plan.est.rows, plan.est.width, e.cols, plan.est.lineage, plan.est.ndv)
+            plan = PNode("project", {"columns": want}, [plan], e, plan.cost,
+                         f"project [{', '.join(want)}]")
         return plan
 
     @staticmethod

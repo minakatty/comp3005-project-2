@@ -1,5 +1,8 @@
 # DESIGN_LOG: Project 2
 
+AI was wrong, by module (the handout asks for at least two per module):
+M1: (1), (2), (3). M2: (4), (5), (6), (10). M3: (9), (12). M4: (7), (8), (11).
+
 ## Week one: engine refactor (handout §1.3)
 
 - **What changed.** `ralang/` is now a library: tokenizer, parser, AST and operators
@@ -31,14 +34,16 @@
   file, LRU and CLOCK, catalog in pages, CLI with the required JSON shapes.
 - **Tried:** wrote the page, heap, pool and catalog, then checked the two worked
   examples first (3.2 page table, 5.3 trace) before anything else.
-- **Broke:** `tests/test_week1.py::test_storage_provider_over_the_m1_engine` was written
+- **AI was wrong (2): a test written against an API that no longer existed.**
+  `tests/test_week1.py::test_storage_provider_over_the_m1_engine` was written
   against an earlier M1 API (`catalog.create_table(name, "a:INT,...")` and a heap with
   no directory page). Updated the test to the public API
   (`db.create_table(name, parse_schema(...))`).
-- **Decision:** compaction on insert only, when the page's dead space would make the
-  record fit (DESIGN_M1.md §4). Without it, every catalog update left a dead 150-byte
-  record behind and the catalog grew without bound, which I noticed in the
-  catalog page dump (`slot 0 (0,0) dead`).
+- **AI was wrong (3): the catalog grew without bound.** The first catalog deleted and
+  re-inserted its entry on every update but nothing ever reused a deleted record's
+  space, so each update left a dead 150-byte record behind. I noticed it in the catalog
+  page dump (`slot 0 (0,0) dead` over and over). **Decision:** compaction on insert
+  only, when the page's dead space would make the record fit (DESIGN_M1.md §4).
 
 ## 2026-11-12: Module 2: memory budget and the operators
 
@@ -46,18 +51,18 @@
 - **Decision:** enforce the budget by construction: tuples an operator keeps live in
   frames reserved from the same buffer pool, so pinned + reserved can never exceed B
   (DESIGN_M2.md §2).
-- **AI was wrong (2): hash distinct returned 200 rows instead of 100.** The hybrid
+- **AI was wrong (4): hash distinct returned 200 rows instead of 100.** The hybrid
   hash table tested membership with `table.get(k) is not None`; for distinct the
   stored state *is* `None`, so every tuple looked like a new group once the table
   spilled. Found by running the same distinct in sort mode and hash mode on the same
   input and getting different counts; fixed to `k in table`.
-- **AI was wrong (3): hash join got *more* expensive as B grew.** The cost-vs-formula
+- **AI was wrong (5): hash join got *more* expensive as B grew.** The cost-vs-formula
   table showed hash join at 563 page I/O for two 32-page inputs at B = 256, against a
   formula of 192. With P = B − 2 = 254 partitions each of the 64 input pages landed in
   a different, almost empty partition page. Fixed by building in memory when the build
   side fits (hybrid hashing); when it does not fit there are more pages than partitions,
   so the near-empty partitions mostly disappear.
-- **AI was wrong (4): sort-merge join crashed at B = 16 and then got slower with more
+- **AI was wrong (6): sort-merge join crashed at B = 16 and then got slower with more
   memory.** It kept the sorted left input in memory, which at B = 16 left the right
   sort one frame, fewer than a merge needs: `no unpinned frame available`, caught by
   `test_three_joins_same_bag_at_every_B`. After that fix the crossover table showed
@@ -81,7 +86,7 @@
 
 ## 2026-11-12: Module 4: optimizer
 
-- **AI was wrong (5): rule 5 never fired through a subquery.** For
+- **AI was wrong (7): rule 5 never fired through a subquery.** For
   `... FROM (SELECT did, COUNT(*) AS n ... GROUP BY did) AS t WHERE t.did = 3 AND t.n > 2`
   rule 1 split the predicate into two stacked selects; the one on `t.n` stopped above
   the group_by (correct) and the one on `t.did` then sat on top of it and could not
@@ -93,8 +98,9 @@
   ceil(40/30) = 2 blocks at B = 32, so the formula gives 650. Every other cell of
   the table reproduces; the chosen plan is the same. Documented in DESIGN_M4.md §5.1
   and asserted in `DPExample`.
-- **Broke:** "changing B changes the join algorithm" was false on Emp ⋈ Proj (Proj is
-  so small that nested loop always wins); the test now uses a self join of Emp, where
+- **AI was wrong (8): a test claimed something that was false.** The test for
+  "changing B changes the join algorithm" used Emp ⋈ Proj, where it is not true (Proj is
+  so small that nested loop always wins), so it failed; the test now uses a self join of Emp, where
   hash join wins at B = 4 and nested loop at B = 32.
 
 ## 2026-11-13: Running everything on Windows, and the missing course files
@@ -102,8 +108,8 @@
 - **Trying to:** run the whole walkthrough in PowerShell on my own machine.
 - **Broke:** I was still in the old project folder (130 tests, old `storage/schema.py`),
   so `sql.py`, `opt.py`, `exec.py` did not exist. Renamed it `project2_old`, unzipped the
-  new code, copied `.git` across: 207 tests, OK, in 145 s (211 now, with the tests added below).
-- **AI was wrong (6): plans saved with PowerShell's `>` could not be read.** The
+  new code, copied `.git` across: 207 tests, OK, in 145 s (212 now, with the tests added below).
+- **AI was wrong (9, M3): plans saved with PowerShell's `>` could not be read.** The
   walkthrough said `python sql.py compile ... --json > q.json`, but Windows PowerShell's
   `>` writes UTF-16, and the tools opened files as UTF-8. Found when preparing the
   Windows instructions; fixed with one `read_text` helper (`storage/errors.py`) that
@@ -122,7 +128,7 @@
 ## 2026-11-13 (evening): Counters aligned with the spec's formulas
 
 - **Trying to:** get a second review of the whole repository before submitting.
-- **AI was wrong (7): my sort and hash join counters did not match the spec.** The
+- **AI was wrong (10): my sort and hash join counters did not match the spec.** The
   review pointed out that the sort used B − 1 frames for runs (the scan's page counted
   separately), so the spec's own example (N = 8, B = 3) gave 16 reads / 16 writes for
   the sort instead of the spec's 22 / 14, and the hash join used B − 2 partitions instead
@@ -137,3 +143,22 @@
   run is written out whenever the left merge needs those frames.
 - **Added:** a test that a query of the actual workload changes join algorithm with B
   (q15: hash join at B = 4, nested loop at B = 32), as the M4 checklist asks.
+
+## 2026-11-14: Last check against the handout before submitting
+
+- **Trying to:** go through the handout line by line and run its exact commands.
+- **AI was wrong (11, M4): `SELECT *` came out in the wrong column order.**
+  `SELECT * FROM Emp e, Dept d WHERE e.did = d.did AND d.title = 'IT'` printed Dept's
+  columns before Emp's. M3's plan was right (`project [e.eid, ..., d.title]`), but rule 7
+  removed that project because it kept every column in order, and then the join-order DP
+  put the tiny Dept first, which changes the order. Found by running a mix of queries
+  through `dbms.py` and reading the output. Fixed in `Planner.join_block`: if the chosen
+  order changes the columns and nothing above the join sets the order, add a project
+  back. Checked that all 20 workload plans at B = 4 and B = 16 are byte-identical to
+  before, so REPORT_M4 is unchanged. Test:
+  `test_select_star_keeps_from_order_after_join_reordering` (fails on the old code).
+- **AI was wrong (12, M3/M4): the tools did not accept `--catalog`.** The handout writes
+  `sql compile --file q.sql --catalog db/ --json` and `opt plan ... --catalog db/`, but the
+  tools only knew `--db` and silently ignored `--catalog`, so the professor's commands
+  would have failed with "no database directory 'db'". Fixed in the shared argument
+  parser (`storage/cli.py`): `--catalog` now means the same as `--db`.

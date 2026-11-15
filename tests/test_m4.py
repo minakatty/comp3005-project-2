@@ -122,6 +122,10 @@ class DPExample(unittest.TestCase):
         self.assertIsNone(table[("A", "C")])               # no predicate: skipped
         self.assertEqual(best("A", "Bp", "C"), 530)
         self.assertEqual(root.cost, 530)
+        # Bp goes first, so a project on top puts SELECT * back in FROM order (A, Bp, C)
+        self.assertEqual(root.op, "project")
+        self.assertEqual(root.fields["columns"][:2], ["A.x", "A.pa"])
+        root = root.children[0]
         # the winner joins Bp to A first, Bp as the outer
         j = root.children[0]
         self.assertEqual((root.op, j.op), ("nested_loop_join", "nested_loop_join"))
@@ -193,6 +197,16 @@ class Live(unittest.TestCase):
         for q in self.QUERIES:
             for B in (4, 16):
                 self.run_sql(q, B)
+
+    def test_select_star_keeps_from_order_after_join_reordering(self):
+        # Dept is tiny, so the DP puts it first; the columns must still come out e.* then d.*
+        sql = "SELECT * FROM Emp e, Dept d WHERE e.did = d.did AND d.title = 't3'"
+        for B in (4, 16):
+            _, opt, naive = self.run_sql(sql, B)
+            names = [c[0] for c in opt.schema]
+            self.assertEqual(names, ["e.eid", "e.name", "e.age", "e.did", "e.salary",
+                                     "d.did", "d.title", "d.budget"])
+            self.assertEqual(names, [c[0] for c in naive.schema])
 
     def test_optimized_beats_naive_on_a_join(self):
         _, opt, naive = self.run_sql(self.QUERIES[1], 16)

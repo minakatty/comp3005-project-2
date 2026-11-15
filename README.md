@@ -38,7 +38,7 @@ cd C:\dev\project2
 python -m unittest discover -s tests
 ```
 
-You should see `Ran 211 tests ... OK`. It takes about 2 minutes; the M4 tests are the slow ones.
+You should see `Ran 212 tests ... OK`. It takes about 2 minutes; the M4 tests are the slow ones.
 
 ## Quick demo (start here)
 
@@ -94,7 +94,7 @@ python opt.py explain  --db mydb --logical q.json --frames 8 --rewrites   # befo
 python opt.py dp-table --db mydb --logical q.json --frames 8              # the join-order DP table
 python opt.py plan     --db mydb --logical q.json --frames 8 --json > plan.json
 ```
-Extras: `--sql q.sql` works instead of `--logical`, `--disable 2,6` turns rewrite rules
+Extras: `--catalog db/` works the same as `--db` in every tool (the handout writes it that way), `--sql q.sql` works instead of `--logical`, `--disable 2,6` turns rewrite rules
 off, and `--naive` prints the "no optimizer" plan I compare against in REPORT_M4.
 
 ### M2: execution (`exec.py` is short for `python -m execution`)
@@ -144,7 +144,7 @@ About data: it was said the course traces, sample plans and dataset won't be pos
 | `GRAMMAR.md` | Bonus 1 grammar |
 | `GRAMMAR_SQL.md` | the SQL grammar for M3, with precedence tables |
 | `ARCHITECTURE.md` | the whole system, the interfaces between modules, what I'd change |
-| `DESIGN_LOG.md` | dated diary, including seven times the AI got something wrong |
+| `DESIGN_LOG.md` | dated diary, including twelve times the AI got something wrong (at least two per module) |
 | `tests/` | all the tests; the 25 Bonus 1 cases still pass |
 | `tools/` | the scripts that make the traces, the M4 dataset and every report table |
 | `samples/` | my sample plans (one per operator), sample SQL, and the script that builds their database |

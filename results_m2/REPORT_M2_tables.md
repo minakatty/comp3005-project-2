@@ -88,9 +88,9 @@ R = 42 pages, S = 42 pages.
 
 40% of the rows on both sides have key 7; the rest are uniform over 0..999. Hash join at B = 16.
 
-**uniform**: partitions (left pages) [5, 5, 5, 4, 5, 4, 5, 5, 4, 4, 5, 5, 5, 4, 5], (right pages) [4, 5, 4, 5, 5, 5, 5, 5, 5, 5, 4, 6, 4, 4, 5], overflowed partitions [], reads 269, writes 141, comparisons 4220, output 2263 rows, 0.03 s
+**uniform**: partitions (left pages) [5, 5, 5, 4, 5, 4, 5, 5, 4, 4, 5, 5, 5, 4, 5], (right pages) [4, 5, 4, 5, 5, 5, 5, 5, 5, 5, 4, 6, 4, 4, 5], overflowed partitions [], reads 269, writes 141, comparisons 4220, output 2263 rows, 0.11 s
 
-**skewed**: partitions (left pages) [3, 3, 3, 3, 3, 3, 4, 27, 3, 3, 4, 3, 3, 3, 3], (right pages) [3, 3, 3, 3, 3, 2, 3, 28, 4, 3, 3, 3, 2, 3, 3], overflowed partitions [7], reads 312, writes 140, comparisons 433191, output 358257 rows, 0.21 s
+**skewed**: partitions (left pages) [3, 3, 3, 3, 3, 3, 4, 27, 3, 3, 4, 3, 3, 3, 3], (right pages) [3, 3, 3, 3, 3, 2, 3, 28, 4, 3, 3, 3, 2, 3, 3], overflowed partitions [7], reads 312, writes 140, comparisons 433191, output 358257 rows, 0.48 s
 
 ## 5. The budget
 

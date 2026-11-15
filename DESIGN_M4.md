@@ -153,6 +153,9 @@ Selinger-style dynamic programming over **left-deep** trees (`Planner.join_block
    the whole query graph is disconnected, in which case cross products are allowed.
 5. Predicates no join used (single-leaf predicates left above the block when rule 2 is
    off, constants) become a filter on top.
+6. A new join order also reorders the columns. If nothing above the block sets the order
+   (a project or group_by), a project on top puts them back in the logical plan's order,
+   so `SELECT *` always lists columns in FROM order.
 
 Join conditions are written in sorted order, so a query written with commas and the
 same query written with JOIN ON produce byte-identical physical plans

@@ -1,6 +1,10 @@
 Amina Katawazi
 101308840
 
+
+# VIDEO LINK: https://docs.google.com/videos/d/1TLc-edqXjWMehT_MiSskAS1kTz4AlAaQdIZZzI4AodI/play?usp=sharing
+
+
 # COMP 3005 Project 2 - a small database system
 
 This is my Project 2: a working DBMS built on top of my Bonus Project 1
